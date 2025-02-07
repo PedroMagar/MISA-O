@@ -3,7 +3,7 @@
 >The specification is still in development and there is still a long way to go...
 
 ## Architecture
-MISA-O is a 4-bit architecture, it consist of one program counter register, four 4-bit operand register, two 16-bit operator register and two 16-bit memory address register. Operand register can be linked to work as 2x8-bit or 1x16-bit besides the original 4x4-bit mode, while active operator will always provide values acordingly with operand size. Logic operations will primarly be on Operand register and store the result in itself, while memory operation will use active memory address register as adrress. The Operand register can be rotated Left or right in sets (like operation Shift rotate left/right by 4).
+MISA-O is a 4-bit architecture, it consist of one program counter register, four 4-bit operand register, two 16-bit operator register and two 16-bit memory address register. Operand register can be linked to work as 2x8-bit or 1x16-bit besides the original 4x4-bit mode, while active operator will always provide values accordingly with operand size. Logic operations will primarily be on Operand register and store the result in itself, while memory operation will use active memory address register as address. The Operand register can be rotated Left or right in sets (like operation Shift rotate left/right by 4).
 
 ### Characteristics:
 - 1x16-bit PC (Program Counter) register.
