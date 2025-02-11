@@ -1,6 +1,6 @@
 # MISA-O
-**My ISA Origin** is a 4-bit MISC ISA made to be functional.
->The specification is still in development and there is still a long way to go...
+**My ISA Version 0** is a 4-bit MISC ISA made to be functional.
+>The specification is still under development and there is still a long way to go...
 
 ## Architecture
 MISA-O is a 4-bit architecture, it consist of one program counter register, four 4-bit operand register, two 16-bit operator register and two 16-bit memory address register. Operand register can be linked to work as 2x8-bit or 1x16-bit besides the original 4x4-bit mode, while active operator will always provide values accordingly with operand size. Logic operations will primarily be on Operand register and store the result in itself, while memory operation will use active memory address register as address. The Operand register can be rotated Left or right in sets (like operation Shift rotate left/right by 4).
@@ -28,14 +28,14 @@ The following table lists the architecture current instructions.
 | 0101 |OR          |                                        |
 | 1001 |XOR         | Exclusive OR                           |
 | 1101 |SHF         | Shift Left                             |
-| 0011 |ADDc        | Add with Carry                         |
+| 0011 |**ADDc**    | Add with Carry                         |
 | 1011 |INC         | Increment                              |
 | 0111 |BEQz        | Branch if Equal Zero                   |
 | 1111 |JAL         | Jump and Link                          |
 | 0010 |NEG         | Negate                                 |
 | 0110 |RR          | Rotate Register (rd)                   |
-| 1010 |SR / SA     | Swap Register / Swap Address           |
-| 1110 |LK          | Link Registers                         |
+| 1010 |**SR / SA** | Swap Register / Swap Address           |
+| 1110 |**LK**      | Link Registers                         |
 | 0100 |LD          | Load word                              |
 | 1100 |LDi         | Load Immediate                         |
 | 1000 |SW          | Store Word                             |
@@ -57,7 +57,24 @@ Currently there are some instructions that could became part of the ISA:
 | 0100 |LDi / LD    | Load Immediate / Load word             |
 | 0000 |BC          | Branch if Carry                        |
 | 0000 |ADD         | Add without Carry                      |
-| 0000 |CLR         | Clear                                  |
+| 0000 |SHFR        | Shift Left and Rotate                  |
+| 0000 |CLR         | Clear Register                         |
+| 0000 |**CC**      | Clear Carry                            |
 | 0000 |INV         | Invert Register                        |
 | 0000 |CLR         | Clear                                  |
 | 0000 |RRS         | Rotate Source Register (rs)            |
+| 0000 |RRA         | Rotate Register Address (addr)         |
+
+## Reference Implementation
+The reference implementation (located at "/design/misa-o_ref.sv") is not made to be performant, optimal or even synthesizable; its main purpose is to be simple to interpret while also serving as a playground to test the ISA instructions.
+
+### How to run
+To run you must have installed icarus verilog (iverilog) and GTKWAVE, open terminal on "/scripts", from there execute the scripts in it.
+
+#### Scripts
+- misa-o_b.sh: Build script, utilized to see if the project is currently building.
+- misa-o_r.sh: Build & Runner script, utilized to run the test and to see the results and manually validate the behaviour.
+
+#### Dependencies
+- Icarus Verilog (iverilog).
+- GTKWAVE (gtkwave).
