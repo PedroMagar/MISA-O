@@ -11,14 +11,12 @@ module misao (
     output wire [3:0] mem_data_out,
     output wire [3:0] test_data
 );
-    // Parâmetros
-        localparam [3:0] PARAM_EX = 4'b0000;
+    // Parameters
+        localparam [1:0] UL = 2'b00;
+        localparam [1:0] LK8 = 2'b01;
+        localparam [1:0] LK16 = 2'b10;
 
-        localparam [1:0] BM4 = 2'b00;
-        localparam [1:0] BM8 = 2'b01;
-        localparam [1:0] BM16 = 2'b10;
-
-        // Instruções
+        // Instructions
             localparam [3:0] AND  = 4'b0001;
             localparam [3:0] OR   = 4'b0101;
             localparam [3:0] XOR  = 4'b1001;
@@ -28,9 +26,9 @@ module misao (
             localparam [3:0] BEQZ = 4'b0111;
             localparam [3:0] JAL  = 4'b1111;
             localparam [3:0] NEG  = 4'b0010;
-            localparam [3:0] RR   = 4'b1010;
-            localparam [3:0] SR   = 4'b0110;
-            localparam [3:0] SA   = 4'b0110;
+            localparam [3:0] RR   = 4'b0110;
+            localparam [3:0] SR   = 4'b1010;
+            localparam [3:0] SA   = 4'b1010;
             localparam [3:0] LK   = 4'b1110;
             localparam [3:0] LD   = 4'b0100;
             localparam [3:0] LDI  = 4'b1100;
@@ -82,11 +80,11 @@ module misao (
             flag_mem_write <= 1'b0;
             operation_mode <= 1'b0;
             operation_carry <= 1'b0;
-            link_state <= BM4;
+            link_state <= UL;
 
             foreach (bank_0[i]) bank_0[i] <= 4'b0;
-            foreach (bank_1[i]) bank_1[i] <= 4'b0;
-            foreach (bank_addr[i]) bank_addr[i] <= 4'b0;
+            foreach (bank_1[i]) bank_1[i] <= 16'b0;
+            foreach (bank_addr[i]) bank_addr[i] <= 16'b0;
         end else begin
 
             pc <= (flag_pc_hold || !mem_enable_read) ? pc : pc + 1;
@@ -97,25 +95,60 @@ module misao (
 
                 // Instruction Decode
                 case (mem_data_in)
-                    AND :   bank_0[0] <= (operation_mode) ? !(bank_0[0] & bank_1[0][3:0]) : bank_0[0] & bank_1[0][3:0];
-                    OR  :   bank_0[0] <= (operation_mode) ? !(bank_0[0] | bank_1[0][3:0]) : bank_0[0] | bank_1[0][3:0];
-                    XOR :   bank_0[0] <= (operation_mode) ? !(bank_0[0] ^ bank_1[0][3:0]) : bank_0[0] ^ bank_1[0][3:0];
-                    SHF :   begin 
-                                if (operation_mode) begin
-                                    operation_carry <= bank_0[0][0];
-                                    bank_0[0] <= bank_0[0] >> 1;
-                                end else begin
-                                    operation_carry <= bank_0[0][3];
-                                    bank_0[0] <= bank_0[0] << 1;
-                                end
+                    AND :   begin
+                                case(link_state)
+                                    UL  : bank_0[0] <= (operation_mode) ? !(bank_0[0] & bank_1[0][3:0]) : bank_0[0] & bank_1[0][3:0];
+                                    LK8 : {bank_0[1], bank_0[0]} <= (operation_mode) ? !({bank_0[1], bank_0[0]} & bank_1[0][7:0]) : {bank_0[1], bank_0[0]} & bank_1[0][7:0];
+                                    LK16: {bank_0[3], bank_0[2], bank_0[1], bank_0[0]} <= (operation_mode) ? !({bank_0[3], bank_0[2], bank_0[1], bank_0[0]} & bank_1[0][15:0]) : {bank_0[3], bank_0[2], bank_0[1], bank_0[0]} & bank_1[0][15:0];
+                                    default ;
+                                endcase
                             end
-                    ADDC:   {operation_carry, bank_0[0]} <= (operation_mode) ? bank_0[0] - bank_1[0][3:0] - operation_carry : bank_0[0] + bank_1[0][3:0] + operation_carry;
-                    INC :   {operation_carry, bank_0[0]} <= (operation_mode) ? bank_0[0] - 1  : bank_0[0] + 1;
+                    OR  :   begin
+                                case(link_state)
+                                    UL  : bank_0[0] <= (operation_mode) ? !(bank_0[0] | bank_1[0][3:0]) : bank_0[0] | bank_1[0][3:0];
+                                    LK8 : {bank_0[1], bank_0[0]} <= (operation_mode) ? !({bank_0[1], bank_0[0]} | bank_1[0][7:0]) : {bank_0[1], bank_0[0]} | bank_1[0][7:0];
+                                    LK16: {bank_0[3], bank_0[2], bank_0[1], bank_0[0]} <= (operation_mode) ? !({bank_0[3], bank_0[2], bank_0[1], bank_0[0]} | bank_1[0][15:0]) : {bank_0[3], bank_0[2], bank_0[1], bank_0[0]} | bank_1[0][15:0];
+                                    default ;
+                                endcase
+                            end
+                    XOR :   begin
+                                case(link_state)
+                                    UL  : bank_0[0] <= (operation_mode) ? !(bank_0[0] ^ bank_1[0][3:0]) : bank_0[0] ^ bank_1[0][3:0];
+                                    LK8 : {bank_0[1], bank_0[0]} <= (operation_mode) ? !({bank_0[1], bank_0[0]} ^ bank_1[0][7:0]) : {bank_0[1], bank_0[0]} ^ bank_1[0][7:0];
+                                    LK16: {bank_0[3], bank_0[2], bank_0[1], bank_0[0]} <= (operation_mode) ? !({bank_0[3], bank_0[2], bank_0[1], bank_0[0]} ^ bank_1[0][15:0]) : {bank_0[3], bank_0[2], bank_0[1], bank_0[0]} ^ bank_1[0][15:0];
+                                    default ;
+                                endcase
+                            end
+                    SHF :   begin 
+                                case(link_state)
+                                    UL  : if (operation_mode) {bank_0[0], operation_carry} <= bank_0[0] >> 1; else {operation_carry, bank_0[0]} <= bank_0[0] << 1;
+                                    LK8 : if (operation_mode) {bank_0[1], bank_0[0], operation_carry} <= {bank_0[1], bank_0[0]} >> 1; else {operation_carry, bank_0[1], bank_0[0]} <= {bank_0[1], bank_0[0]} << 1;
+                                    LK16: if (operation_mode) {bank_0[3], bank_0[2], bank_0[1], bank_0[0], operation_carry} <= {bank_0[3], bank_0[2], bank_0[1], bank_0[0]} >> 1; else {operation_carry, bank_0[3], bank_0[2], bank_0[1], bank_0[0]} <= {bank_0[3], bank_0[2], bank_0[1], bank_0[0]} << 1;
+                                    default ;
+                                endcase
+                            end
+                    ADDC:   begin 
+                                case(link_state)
+                                    UL  : {operation_carry, bank_0[0]} <= (operation_mode) ? bank_0[0] - bank_1[0][3:0] - operation_carry : bank_0[0] + bank_1[0][3:0] + operation_carry;
+                                    LK8 : {operation_carry, bank_0[1], bank_0[0]} <= (operation_mode) ? {bank_0[1], bank_0[0]} - bank_1[0][7:0] - operation_carry : {bank_0[1], bank_0[0]} + bank_1[0][7:0] + operation_carry;
+                                    LK16: {operation_carry, bank_0[3], bank_0[2], bank_0[1], bank_0[0]} <= (operation_mode) ? {bank_0[3], bank_0[2], bank_0[1], bank_0[0]} - bank_1[0][15:0] - operation_carry : {bank_0[3], bank_0[2], bank_0[1], bank_0[0]} + bank_1[0][15:0] + operation_carry;
+                                    default ;
+                                endcase
+                            end
+                    INC :   begin 
+                                case(link_state)
+                                    UL  : {operation_carry, bank_0[0]} <= (operation_mode) ? bank_0[0] - 1 : bank_0[0] + 1;
+                                    LK8 : {operation_carry, bank_0[1], bank_0[0]} <= (operation_mode) ? {bank_0[1], bank_0[0]} - 1 : {bank_0[1], bank_0[0]} + 1;
+                                    LK16: {operation_carry, bank_0[3], bank_0[2], bank_0[1], bank_0[0]} <= (operation_mode) ? {bank_0[3], bank_0[2], bank_0[1], bank_0[0]} - 1 : {bank_0[3], bank_0[2], bank_0[1], bank_0[0]} + 1;
+                                    default ;
+                                endcase
+                            end
                     BEQZ:   if (bank_0[0] == 4'b0) pc <= pc + 16;
                     JAL :   begin pc <= bank_addr[0]; bank_addr[0] <= pc; end
-                    NEG :   operation_mode <= ! operation_mode;
+                    NEG :   operation_mode <= !operation_mode;
                     RR  :   begin
-                                if (operation_mode) begin
+                                if (operation_mode)
+                                begin
                                     bank_0[0] <= bank_0[3]; 
                                     bank_0[1] <= bank_0[0]; 
                                     bank_0[2] <= bank_0[1]; 
@@ -141,10 +174,10 @@ module misao (
                             end
                     LK  :   begin
                                 case (link_state)
-                                    BM4 : link_state <= BM8;
-                                    BM8 : link_state <= BM16;
-                                    BM16: link_state <= BM4;
-                                    default: link_state <= BM4;
+                                    UL : link_state <= LK8;
+                                    LK8 : link_state <= LK16;
+                                    LK16: link_state <= UL;
+                                    default: link_state <= UL;
                                 endcase
                             end
                     LD  :   begin flag_pc_hold <= 1'b1; flag_ld  <= 1'b1; flag_pc_data <= 1'b0; operation_carry <= 1'b0; end
