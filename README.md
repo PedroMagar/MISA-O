@@ -22,24 +22,24 @@ MISA-O is a 4-bit architecture, it consist of one program counter register, four
 ## Instructions
 The following table lists the architecture current instructions.
 
-|Binary|Instruction |Description                             |
-|------|------------|----------------------------------------|
-| 0001 |AND         |                                        |
-| 0101 |OR          |                                        |
-| 1001 |XOR         | Exclusive OR                           |
-| 1101 |SHF         | Shift Left                             |
-| 0011 |**ADDc**    | Add with Carry                         |
-| 1011 |INC         | Increment                              |
-| 0111 |BEQz        | Branch if Equal Zero                   |
-| 1111 |JAL         | Jump and Link                          |
-| 0010 |NEG         | Negate                                 |
-| 0110 |RR          | Rotate Register (rd)                   |
-| 1010 |**SR / SA** | Swap Register / Swap Address           |
-| 1110 |**LK**      | Link Registers                         |
-| 0100 |LD          | Load word                              |
-| 1100 |LDi         | Load Immediate                         |
-| 1000 |SW          | Store Word                             |
-| 0000 |NOP         | No Operation                           |
+|Binary|Instruction |Negated     |Description                             |
+|------|------------|------------|----------------------------------------|
+| 0001 |AND         |NAND        |                                        |
+| 0101 |OR          |NOR         |                                        |
+| 1001 |XOR         |**XNOR?**   | Exclusive OR                           |
+| 1101 |SHL         |**SHR**     | Shift Left                             |
+| 0011 |**ADDc**    |**SUBc**    | Add with Carry                         |
+| 1011 |INC         |DEC         | Increment                              |
+| 0111 |BEQz        |**BNEz?**   | Branch if Equal Zero                   |
+| 1111 |JAL         |JAL         | Jump and Link                          |
+| 0010 |NEG         |NEG         | Negate                                 |
+| 0110 |RR          |**RL**      | Rotate Register (rd)                   |
+| 1010 |SR          |SA          | Swap Register / Swap Address           |
+| 1110 |**LK**      |**LK**      | Link Registers                         |
+| 0100 |LD          |LD          | Load word                              |
+| 1100 |LDi         |LDi         | Load Immediate                         |
+| 1000 |SW          |SW          | Store Word                             |
+| 0000 |NOP         |NOP         | No Operation                           |
 
 Instructions under review:
 - \* : Not mandatory instructions.
@@ -66,14 +66,14 @@ Currently there are some instructions that could became part of the ISA:
 | 0000 |RRA         | Rotate Register Address (addr)         |
 
 ## Reference Implementation
-The reference implementation (located at "/design/misa-o_ref.sv") is not made to be performant, optimal or even synthesizable; its main purpose is to be simple to interpret while also serving as a playground to test the ISA instructions.
+The reference implementation (located at "/design/misa-o_ref.sv") is not made to be performant, efficient, optimal or even synthesizable; its main purpose is to be simple to interpret while also serving as a playground to test the ISA instructions.
 
 ### How to run
 To run you must have installed icarus verilog (iverilog) and GTKWAVE, open terminal on "/scripts", from there execute the scripts in it.
 
 #### Scripts
 - misa-o_b.sh: Build script, utilized to see if the project is currently building.
-- misa-o_r.sh: Build & Runner script, utilized to run the test and to see the results and manually validate the behaviour.
+- misa-o_r.sh: Build & Run script, utilized to run the test and to see the results in GTKWAVE, there you can visualize the behaviour.
 
 #### Dependencies
 - Icarus Verilog (iverilog).
