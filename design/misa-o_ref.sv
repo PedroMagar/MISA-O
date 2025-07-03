@@ -1,22 +1,22 @@
 module misao (
-    input wire        clk,
-    input wire        rst,
+    input wire        clk,              // Clock signal
+    input wire        rst,              // Reset signal
 
-    input wire        mem_enable_read,
-    input wire        mem_enable_write,
-    input wire  [3:0] mem_data_in,
-    output reg [15:0] mem_addr,
+    input wire        mem_enable_read,  // Controls whether to read from memory
+    input wire        mem_enable_write, // Controls whether to write to memory
+    input wire  [3:0] mem_data_in,     // Input data from memory (4 bits)
+    output reg [15:0] mem_addr,         // Address to read/write in memory
 
-    output reg        mem_rw,
-    output wire [3:0] mem_data_out,
-    output wire [3:0] test_data
+    output reg        mem_rw,           // Read/Write control signal
+    output wire [3:0] mem_data_out,     // Output data to memory (4 bits)
+    output wire [3:0] test_data         // Data for testing purposes
 );
-    // Parameters
-        localparam [1:0] UL = 2'b00;
-        localparam [1:0] LK8 = 2'b01;
-        localparam [1:0] LK16 = 2'b10;
+    // Parameters to define operation modes
+        localparam [1:0] UL = 2'b00;  // Unlink mode (4-bit)
+        localparam [1:0] LK8 = 2'b01;  // Link mode (8-bit)
+        localparam [1:0] LK16 = 2'b10; // Link mode (16-bit)
 
-        // Instructions
+        // Instruction opcodes
             localparam [3:0] AND  = 4'b0001;
             localparam [3:0] OR   = 4'b0101;
             localparam [3:0] XOR  = 4'b1001;
@@ -38,37 +38,39 @@ module misao (
 
     //
 
-    reg [15:0] pc;
-    wire [15:0] data_addr;
+    // Internal registers and wires
+    reg [15:0] pc;                  // Program Counter
+    wire [15:0] data_addr;          // Address for data access
 
-    reg [3:0] bank_0 [4];
-    reg [15:0] bank_1 [2];
-    reg [15:0] bank_addr [2];
+    reg [3:0] bank_0 [4];           // Operand registers (4)
+    reg [15:0] bank_1 [2];          // Operator registers (2 x 16-bit)
+    reg [15:0] bank_addr [2];       // Memory address registers (2 x 16-bit)
 
-    reg [3:0] instruction;
+    reg [3:0] instruction;           // Current instruction being executed
 
-    reg operation_mode;
-    reg operation_carry;
-    reg [1:0] link_state;
+    reg operation_mode;              // Current operation mode (linked/unlinked)
+    reg operation_carry;             // Carry flag for arithmetic operations
+    reg [1:0] link_state;            // Current state for link mode
 
-    reg flag_mem_write;
-    reg flag_pc_hold;
-    reg flag_pc_data;
-    reg flag_ld;
-    reg flag_ldi;
-    reg flag_write;
-    reg flag_write_end;
+    reg flag_mem_write;              // Flag to indicate a write operation in memory
+    reg flag_pc_hold;                // Flag to hold the program counter
+    reg flag_pc_data;                // Flag to control data output from PC
+    reg flag_ld;                     // Flag for Load operation
+    reg flag_ldi;                    // Flag for Load Immediate operation
+    reg flag_write;                  // General write operation flag
+    reg flag_write_end;              // Flag to indicate write operation completion
 
-    reg [4:0] math_result;
+    reg [4:0] math_result;           // Register for math result storage (not yet used)
 
-    assign test_data = bank_0[0];
-    assign mem_addr = (flag_pc_data) ? pc : {bank_addr[0]} ;
+    // assign test_data = bank_0[0];                           // Assign test data for verification
+    assign mem_addr = (flag_pc_data) ? pc : {bank_addr[0]}; // Select address based on flags
 
-    assign mem_data_out = (mem_enable_write & !mem_enable_read) ? bank_0[0] : 4'bz ;
+    // Memory output data assignment
+    assign mem_data_out = (mem_enable_write & !mem_enable_read) ? bank_0[0] : 4'bz; // Control memory read/write
 
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            instruction <= 4'b0; // debug
+            instruction <= 4'b0;
             pc <= 16'b0;
             flag_pc_hold <= 1'b0;
             flag_pc_data <= 1'b1;
@@ -89,14 +91,14 @@ module misao (
 
             pc <= (flag_pc_hold || !mem_enable_read) ? pc : pc + 1;
 
-            // Fetch instruction if not to hold
+            // Fetch instruction if not in hold state
             if (!flag_pc_hold & mem_enable_read & !flag_ldi) begin
                 instruction <= mem_data_in;
 
                 // Instruction Decode
                 case (mem_data_in)
                     AND :   begin
-                                case(link_state)
+                                case(link_state) // Check link state for operation
                                     UL  : bank_0[0] <= (operation_mode) ? !(bank_0[0] & bank_1[0][3:0]) : bank_0[0] & bank_1[0][3:0];
                                     LK8 : {bank_0[1], bank_0[0]} <= (operation_mode) ? !({bank_0[1], bank_0[0]} & bank_1[0][7:0]) : {bank_0[1], bank_0[0]} & bank_1[0][7:0];
                                     LK16: {bank_0[3], bank_0[2], bank_0[1], bank_0[0]} <= (operation_mode) ? !({bank_0[3], bank_0[2], bank_0[1], bank_0[0]} & bank_1[0][15:0]) : {bank_0[3], bank_0[2], bank_0[1], bank_0[0]} & bank_1[0][15:0];
@@ -144,7 +146,10 @@ module misao (
                                 endcase
                             end
                     BEQZ:   if (bank_0[0] == 4'b0) pc <= pc + 16;
-                    JAL :   begin pc <= bank_addr[0]; bank_addr[0] <= pc; end
+                    JAL :   begin 
+                                pc <= bank_addr[0];     // Jump to the address in bank_addr[0]
+                                bank_addr[0] <= pc;     // Link the current pc (return address) into bank_addr[0]
+                            end
                     NEG :   operation_mode <= !operation_mode;
                     RR  :   begin
                                 if (operation_mode)
@@ -189,28 +194,32 @@ module misao (
 
             end
 
-            // Executing Load
-            if (flag_ld) begin
-                bank_0[0] <= mem_data_in;
-                flag_ld <= 1'b0;
-                flag_pc_hold <= 1'b0;
-                flag_pc_data <= 1'b1;
-            end
+            // Logic to execute Load and Store operations...
 
-            // Executing Load Immediate
-            if (flag_ldi) begin
-                bank_0[0] <= mem_data_in;
-                flag_ldi <= 1'b0;
-                flag_pc_hold <= 1'b0;
-            end
+                // Executing Load
+                if (flag_ld) begin
+                    bank_0[0] <= mem_data_in;
+                    flag_ld <= 1'b0;
+                    flag_pc_hold <= 1'b0;
+                    flag_pc_data <= 1'b1;
+                end
 
-            // Executing Write (Store Word)
-            if (flag_mem_write) begin
-                flag_mem_write <= 1'b0;
-                mem_rw <= 1'b1;
-                flag_pc_data <= 1'b1;
-                flag_pc_hold <= 1'b0;
-            end
+                // Executing Load Immediate
+                if (flag_ldi) begin
+                    bank_0[0] <= mem_data_in;
+                    flag_ldi <= 1'b0;
+                    flag_pc_hold <= 1'b0;
+                end
+
+                // Executing Write (Store Word)
+                if (flag_mem_write) begin
+                    flag_mem_write <= 1'b0;
+                    mem_rw <= 1'b1;
+                    flag_pc_data <= 1'b1;
+                    flag_pc_hold <= 1'b0;
+                end
+
+            //
 
         end
     end
