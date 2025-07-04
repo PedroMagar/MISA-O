@@ -40,7 +40,12 @@ module misao (
 
     // Internal registers and wires
     reg [15:0] pc;                  // Program Counter
+    wire [15:0] pc_jmp;             // Program Counter
     wire [15:0] data_addr;          // Address for data access
+    wire flag_jmp;
+    wire flag_jmp_ul;
+    wire flag_jmp_lk8;
+    wire flag_jmp_lk16;
 
     reg [3:0] bank_0 [4];           // Operand registers (4)
     reg [15:0] bank_1 [2];          // Operator registers (2 x 16-bit)
@@ -68,6 +73,22 @@ module misao (
     // Memory output data assignment
     assign mem_data_out = (mem_enable_write & !mem_enable_read) ? bank_0[0] : 4'bz; // Control memory read/write
 
+    assign pc_jmp = bank_addr[0];   // Defining address if jump
+
+    assign flag_jmp_ul = (bank_0[0] == 4'b0) ? 1'b1 : 1'b0;
+    assign flag_jmp_lk8 = (flag_jmp_ul & bank_0[1] == 4'b0) ? 1'b1 : 1'b0;
+    assign flag_jmp_lk16 = (flag_jmp_lk8 & {bank_0[2], bank_0[3]} == 8'b00000000) ? 1'b1 : 1'b0;
+
+    assign flag_jmp = (
+        (instruction == JAL || 
+        (instruction == BEQZ && ()
+        ((link_state == UL && flag_jmp_ul) || 
+         (link_state == LK8 && flag_jmp_lk8) || 
+         (link_state == LK16 && flag_jmp_lk16)
+        ))
+        ) && !mem_enable_write
+    ) ? 1'b1 : 1'b0;
+
     always @(posedge clk or posedge rst) begin
         if (rst) begin
             instruction <= 4'b0;
@@ -89,7 +110,7 @@ module misao (
             foreach (bank_addr[i]) bank_addr[i] <= 16'b0;
         end else begin
 
-            pc <= (flag_pc_hold || !mem_enable_read) ? pc : pc + 1;
+            pc <= (flag_pc_hold || !mem_enable_read) ? pc : (flag_jmp) ? pc_jmp : pc + 1;
 
             // Fetch instruction if not in hold state
             if (!flag_pc_hold & mem_enable_read & !flag_ldi) begin
@@ -145,11 +166,8 @@ module misao (
                                     default ;
                                 endcase
                             end
-                    BEQZ:   if (bank_0[0] == 4'b0) pc <= pc + 16;
-                    JAL :   begin 
-                                pc <= bank_addr[0];                                     // Jump to the address in bank_addr[0]
-                                bank_addr[1] <= (operation_mode) ? pc : bank_addr[1];   // Link the current pc (return address) into bank_addr[1]
-                            end
+                    BEQZ:   ;
+                    JAL :   bank_addr[1] <= (operation_mode) ? pc : bank_addr[1];   // Link the current pc (return address) into bank_addr[1]
                     NEG :   operation_mode <= !operation_mode;
                     RR  :   begin
                                 if (operation_mode)
