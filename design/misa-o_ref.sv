@@ -147,8 +147,8 @@ module misao (
                             end
                     BEQZ:   if (bank_0[0] == 4'b0) pc <= pc + 16;
                     JAL :   begin 
-                                pc <= bank_addr[0];     // Jump to the address in bank_addr[0]
-                                bank_addr[0] <= pc;     // Link the current pc (return address) into bank_addr[0]
+                                pc <= bank_addr[0];                                     // Jump to the address in bank_addr[0]
+                                bank_addr[1] <= (operation_mode) ? pc : bank_addr[1];   // Link the current pc (return address) into bank_addr[1]
                             end
                     NEG :   operation_mode <= !operation_mode;
                     RR  :   begin
