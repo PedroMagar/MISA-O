@@ -80,8 +80,9 @@ module misao (
     assign flag_jmp_lk16 = (flag_jmp_lk8 & {bank_0[2], bank_0[3]} == 8'b00000000) ? 1'b1 : 1'b0;
 
     assign flag_jmp = (
-        (instruction == JAL || 
-        (instruction == BEQZ && ()
+        (instruction == JAL ||
+        (instruction == BEQZ && operation_mode && operation_carry) || 
+        (instruction == BEQZ && !operation_mode && 
         ((link_state == UL && flag_jmp_ul) || 
          (link_state == LK8 && flag_jmp_lk8) || 
          (link_state == LK16 && flag_jmp_lk16)

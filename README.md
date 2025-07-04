@@ -10,6 +10,8 @@ MISA-O is a 4-bit architecture, it consist of one program counter register, four
 - 4x4-bit rd (Operand / Register Destiny) register.
 - 2x16-bit rs (Operator / Register Source) register.
 - 2x16-bit addr (Address / Memory address) register.
+  - addr0: Reference address.
+  - add1: Return address.
 - Link/Operation mode:
   - UL: 4-bit mode (Default - Unlink).
   - LK8: 8-bit mode (Link 8).
@@ -26,16 +28,16 @@ The following table lists the architecture current instructions.
 |------|------------|------------|----------------------------------------|
 | 0001 |AND         |NAND        |                                        |
 | 0101 |OR          |NOR         |                                        |
-| 1001 |XOR         |**XNOR?**   | Exclusive OR                           |
-| 1101 |SHL         |**SHR**     | Shift Left                             |
-| 0011 |**ADDc**    |**SUBc**    | Add with Carry                         |
-| 1011 |INC         |DEC         | Increment                              |
-| 0111 |BEQz        |**BNEz?**   | Branch if Equal Zero                   |
-| 1111 |JAL         |JAL         | Jump and Link                          |
+| 1001 |XOR         |XNOR        |                                        |
+| 1101 |SHL         |SHR         | Shift Left/Right                       |
+| 0011 |**ADDc**    |**SUBc**    | Add/Sub with Carry                     |
+| 1011 |INC         |DEC         | Increment/Decrement                    |
+| 0111 |BEQz        |**BC**      | Branch if Equal Zero / Branch if Carry |
+| 1111 |JAL         |**JMP**     | Jump and Link                          |
 | 0010 |NEG         |NEG         | Negate                                 |
-| 0110 |RR          |**RL**      | Rotate Register (rd)                   |
+| 0110 |RR          |RL          | Rotate Register (rd)                   |
 | 1010 |SR          |SA          | Swap Register / Swap Address           |
-| 1110 |**LK**      |**LK**      | Link Registers                         |
+| 1110 |LK          |**LK**      | Link Registers                         |
 | 0100 |LD          |LD          | Load word                              |
 | 1100 |LDi         |LDi         | Load Immediate                         |
 | 1000 |SW          |SW          | Store Word                             |
@@ -44,26 +46,18 @@ The following table lists the architecture current instructions.
 Instructions under review:
 - \* : Not mandatory instructions.
 - **Bold**: Newly added / under review.
-- **LDi/LD/SW**: Name can change to DLi/DL/DW to keep a patern on 'Data' operations.
 - **LD/LDi**: Candidate for unification to spare instruction (becames negate).
-- **BEQz/JAL**: Candidate for unification to spare instruction (becames negate).
-- **SR/SA**: Initialy separeted, became united to spare space for LK operation.
+- **IMUL**: Feasibility/Usability of a Multiplication instruction is under review.
 
 ### Development:
 Currently there are some instructions that could became part of the ISA:
 |Binary|Instruction |Description                             |
 |------|------------|----------------------------------------|
-| 0100 |BEQz / JAL  | Branch if Equal Zero / Jump and Link   |
+| 0000 |IMUL (!)    | Integer Multiplication                 |
 | 0100 |LDi / LD    | Load Immediate / Load word             |
 | 0000 |BC          | Branch if Carry                        |
-| 0000 |ADD         | Add without Carry                      |
-| 0000 |SHFR        | Shift Left and Rotate                  |
 | 0000 |CLR         | Clear Register                         |
 | 0000 |**CC**      | Clear Carry                            |
-| 0000 |INV         | Invert Register                        |
-| 0000 |CLR         | Clear                                  |
-| 0000 |RRS         | Rotate Source Register (rs)            |
-| 0000 |RRA         | Rotate Register Address (addr)         |
 
 ## Reference Implementation
 The reference implementation (located at "/design/misa-o_ref.sv") is not made to be performant, efficient, optimal or even synthesizable; its main purpose is to be simple to interpret while also serving as a playground to test the ISA instructions.
