@@ -1,6 +1,6 @@
 # MISA-O
 **My ISA Version 0** is a 4-bit MISC ISA made to be functional.
->The specification is still under development and there is still a long way to go...
+>The specification is still under development...
 
 ## Architecture
 MISA-O is a 4-bit architecture, it consist of one program counter register, four 4-bit operand register, two 16-bit operator register and two 16-bit memory address register. Operand register can be linked to work as 2x8-bit or 1x16-bit besides the original 4x4-bit mode, while active operator will always provide values accordingly with operand size. Logic operations will primarily be on Operand register and store the result in itself, while memory operation will use active memory address register as address. The Operand register can be rotated Left or right in sets (like operation Shift rotate left/right by 4).
@@ -33,9 +33,9 @@ The following table lists the architecture current instructions.
 | 0011 |**ADDc**    |**SUBc**    | Add/Sub with Carry                     |
 | 1011 |INC         |DEC         | Increment/Decrement                    |
 | 0111 |BEQz        |**BC**      | Branch if Equal Zero / Branch if Carry |
-| 1111 |JAL         |**JMP**     | Jump and Link                          |
+| 1111 |JAL         |**JMP**     | Jump and Link / Jump                   |
 | 0010 |NEG         |NEG         | Negate                                 |
-| 0110 |RR          |RL          | Rotate Register (rd)                   |
+| 0110 |RR          |RL          | Rotate Register(rd) Right/Left         |
 | 1010 |SR          |SA          | Swap Register / Swap Address           |
 | 1110 |LK          |**LK**      | Link Registers                         |
 | 0100 |LD          |LD          | Load word                              |
@@ -55,9 +55,6 @@ Currently there are some instructions that could became part of the ISA:
 |------|------------|----------------------------------------|
 | 0000 |IMUL (!)    | Integer Multiplication                 |
 | 0100 |LDi / LD    | Load Immediate / Load word             |
-| 0000 |BC          | Branch if Carry                        |
-| 0000 |CLR         | Clear Register                         |
-| 0000 |**CC**      | Clear Carry                            |
 
 ## Reference Implementation
 The reference implementation (located at "/design/misa-o_ref.sv") is not made to be performant, efficient, optimal or even synthesizable; its main purpose is to be simple to interpret while also serving as a playground to test the ISA instructions.
@@ -72,3 +69,25 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
 #### Dependencies
 - Icarus Verilog (iverilog).
 - GTKWAVE (gtkwave).
+
+## Registers Overview
+
+          |---------------------------------| 
+       PC | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
+          |---------------------------------| 
+
+          |---------------------------------| 
+    addr1 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
+          |---------------------------------| 
+    addr0 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
+          |---------------------------------| 
+
+          |---------------------------------| 
+       rd | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
+          |---------------------------------| 
+
+          |---------------------------------| 
+      rs0 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
+          |---------------------------------| 
+      rs1 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
+          |---------------------------------| 
