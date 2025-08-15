@@ -20,19 +20,18 @@ module misao (
             localparam [3:0] AND  = 4'b0001;
             localparam [3:0] OR   = 4'b0101;
             localparam [3:0] XOR  = 4'b1001;
-            localparam [3:0] SHF  = 4'b1101;
+            localparam [3:0] SHL  = 4'b1101;
             localparam [3:0] ADDC = 4'b0011;
             localparam [3:0] INC  = 4'b1011;
             localparam [3:0] BEQZ = 4'b0111;
             localparam [3:0] JAL  = 4'b1111;
             localparam [3:0] NEG  = 4'b0010;
             localparam [3:0] RR   = 4'b0110;
-            localparam [3:0] SR   = 4'b1010;
-            localparam [3:0] SA   = 4'b1010;
-            localparam [3:0] LK   = 4'b1110;
+            localparam [3:0] RS   = 4'b1010;
+            localparam [3:0] SS   = 4'b1110;
             localparam [3:0] LD   = 4'b0100;
-            localparam [3:0] LDI  = 4'b1100;
-            localparam [3:0] SW   = 4'b1000;
+            localparam [3:0] SW   = 4'b1100;
+            localparam [3:0] LK   = 4'b1000;
             localparam [3:0] NOP  = 4'b0000;
         //
 
@@ -143,7 +142,7 @@ module misao (
                                     default ;
                                 endcase
                             end
-                    SHF :   begin 
+                    SHL :   begin 
                                 case(link_state)
                                     UL  : if (operation_mode) {bank_0[0], operation_carry} <= bank_0[0] >> 1; else {operation_carry, bank_0[0]} <= bank_0[0] << 1;
                                     LK8 : if (operation_mode) {bank_0[1], bank_0[0], operation_carry} <= {bank_0[1], bank_0[0]} >> 1; else {operation_carry, bank_0[1], bank_0[0]} <= {bank_0[1], bank_0[0]} << 1;
@@ -168,32 +167,44 @@ module misao (
                                 endcase
                             end
                     BEQZ:   ;
-                    JAL :   bank_addr[1] <= (operation_mode) ? pc : bank_addr[1];   // Link the current pc (return address) into bank_addr[1]
+                    JAL :   bank_addr[1] <= (!operation_mode) ? pc : bank_addr[1];   // Link the current pc (return address) into bank_addr[1]
                     NEG :   operation_mode <= !operation_mode;
                     RR  :   begin
                                 if (operation_mode)
                                 begin
-                                    bank_0[0] <= bank_0[3]; 
-                                    bank_0[1] <= bank_0[0]; 
-                                    bank_0[2] <= bank_0[1]; 
-                                    bank_0[3] <= bank_0[2]; 
+                                    case(link_state)
+                                        UL  : begin bank_0[0] <= bank_0[3]; bank_0[1] <= bank_0[0]; bank_0[2] <= bank_0[1]; bank_0[3] <= bank_0[2]; end
+                                        LK8 : begin {bank_0[1], bank_0[0]} <= {bank_0[3], bank_0[2]}; {bank_0[3], bank_0[2]} <= {bank_0[1], bank_0[0]}; end
+                                        LK16: begin end
+                                        default ;
+                                    endcase
                                 end else begin
-                                    bank_0[0] <= bank_0[1]; 
-                                    bank_0[1] <= bank_0[2]; 
-                                    bank_0[2] <= bank_0[3]; 
-                                    bank_0[3] <= bank_0[0]; 
+                                    case(link_state)
+                                        UL  : begin bank_0[0] <= bank_0[1]; bank_0[1] <= bank_0[2]; bank_0[2] <= bank_0[3]; bank_0[3] <= bank_0[0]; end
+                                        LK8 : begin {bank_0[1], bank_0[0]} <= {bank_0[3], bank_0[2]}; {bank_0[3], bank_0[2]} <= {bank_0[1], bank_0[0]}; end
+                                        LK16: begin end
+                                        default ;
+                                    endcase
                                 end
                             end
-                    'hA :  begin
+                    RS  :  begin
+                                if (!operation_mode)
+                                begin
+                                    bank_1[0] <= bank_1[1];
+                                    bank_1[1] <= bank_1[0];
+                                end else begin
+                                    bank_addr[0] <= bank_addr[1];
+                                    bank_addr[1] <= bank_addr[0];
+                                end
+                            end
+                    SS  :  begin
                                 if (!operation_mode)
                                 begin
                                     {bank_0[3], bank_0[2], bank_0[1], bank_0[0]} <= bank_1[0];
-                                    bank_1[0] <= bank_1[1];
-                                    bank_1[1] <= {bank_0[3], bank_0[2], bank_0[1], bank_0[0]};
+                                    bank_1[0] <= {bank_0[3], bank_0[2], bank_0[1], bank_0[0]};
                                 end else begin
                                     {bank_0[3], bank_0[2], bank_0[1], bank_0[0]} <= bank_addr[0];
-                                    bank_addr[0] <= bank_addr[1];
-                                    bank_addr[1] <= {bank_0[3], bank_0[2], bank_0[1], bank_0[0]};
+                                    bank_addr[0] <= {bank_0[3], bank_0[2], bank_0[1], bank_0[0]};
                                 end
                             end
                     LK  :   begin
@@ -204,8 +215,8 @@ module misao (
                                     default: link_state <= UL;
                                 endcase
                             end
-                    LD  :   begin flag_pc_hold <= 1'b1; flag_ld  <= 1'b1; flag_pc_data <= 1'b0; operation_carry <= 1'b0; end
-                    LDI :   begin flag_ldi <= 1'b1; operation_carry <= 1'b0; end
+                    LD  :   if (operation_mode) begin flag_pc_hold <= 1'b1; flag_ld  <= 1'b1; flag_pc_data <= 1'b0; operation_carry <= 1'b0; end
+                            else begin flag_ldi <= 1'b1; operation_carry <= 1'b0; end
                     SW  :   begin flag_pc_hold <= 1'b1; flag_pc_data <= 1'b0; flag_mem_write <= 1'b1; mem_rw <= 1'b0; end
                     NOP :   ;
                     default: ;
