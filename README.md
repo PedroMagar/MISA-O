@@ -20,6 +20,8 @@ MISA-O is a 4-bit architecture, it consist of one program counter register, four
   - 0: Default behaviour.
   - 1: Inverse Logic behaviour (AND became NAND).
 - RR (Rotate Register): It will treat Rd (Operand) as a single register and shift rotate it by "Operation mode" size.
+- RS/RA: It will treat RS/RA as a stack and rotate it *(currently looks like a swap, but later on if more register where added it will truly rotate)*.
+- JAL/JMP: All jumps will be based on register addr0, but linking would be saved on addr1
 
 ## Instructions
 The following table lists the architecture current instructions.
@@ -30,23 +32,22 @@ The following table lists the architecture current instructions.
 | 0101 |OR          |NOR         |                                        |
 | 1001 |XOR         |XNOR        |                                        |
 | 1101 |SHL         |SHR         | Shift Left/Right                       |
-| 0011 |**ADDc**    |**SUBc**    | Add/Sub with Carry                     |
+| 0011 |ADDc        |SUBc        | Add/Sub with Carry                     |
 | 1011 |INC         |DEC         | Increment/Decrement                    |
-| 0111 |BEQz        |**BC**      | Branch if Equal Zero / Branch if Carry |
-| 1111 |JAL         |**JMP**     | Jump and Link / Jump                   |
+| 0111 |BEQz        |BC          | Branch if Equal Zero / Branch if Carry |
+| 1111 |JAL         |JMP         | Jump and Link / Jump                   |
 | 0010 |NEG         |NEG         | Negate                                 |
 | 0110 |RR          |RL          | Rotate Register(rd) Right/Left         |
-| 1010 |SR          |SA          | Swap Register / Swap Address           |
-| 1110 |LK          |**LK**      | Link Registers                         |
-| 0100 |LD          |LD          | Load word                              |
-| 1100 |LDi         |LDi         | Load Immediate                         |
-| 1000 |SW          |SW          | Store Word                             |
+| 1010 |RS          |RA          | Rotate Source/Address Registers        |
+| 1110 |**SS**      |**SA**      | Swap Source/Address Registers          |
+| 0100 |LDi         |LD          | Load Immediate / Load word             |
+| 1100 |SW          |SW          | Store Word                             |
+| 1000 |LK          |**LK**      | Link Registers                         |
 | 0000 |NOP         |NOP         | No Operation                           |
 
 Instructions under review:
 - \* : Not mandatory instructions.
 - **Bold**: Newly added / under review.
-- **LD/LDi**: Candidate for unification to spare instruction (becames negate).
 - **IMUL**: Feasibility/Usability of a Multiplication instruction is under review.
 
 ### Development:
@@ -54,7 +55,7 @@ Currently there are some instructions that could became part of the ISA:
 |Binary|Instruction |Description                             |
 |------|------------|----------------------------------------|
 | 0000 |IMUL (!)    | Integer Multiplication                 |
-| 0100 |LDi / LD    | Load Immediate / Load word             |
+| 0000 |LDi / LDc   | Load Immediate / Load Config           |
 
 ## Reference Implementation
 The reference implementation (located at "/design/misa-o_ref.sv") is not made to be performant, efficient, optimal or even synthesizable; its main purpose is to be simple to interpret while also serving as a playground to test the ISA instructions.
@@ -84,10 +85,10 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
 
           |---------------------------------| 
        rd | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
-          |---------------------------------| 
+          |---------------------------------|
 
-          |---------------------------------| 
-      rs0 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
-          |---------------------------------| 
-      rs1 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
+          |---------------------------------|
+      rs0 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 |
+          |---------------------------------|
+      rs1 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 |
           |---------------------------------| 
