@@ -9,12 +9,12 @@ MISA-O is a 4-bit architecture, it consist of one program counter register, four
 - 1x16-bit PC (Program Counter) register.
 - 4x4-bit rd (Operand / Register Destiny) register.
 - 2x16-bit rs (Operator / Register Source) register.
-- 2x16-bit ar (Address / Memory address) register.
-  - ar0: Reference address.
-  - ar1: Return address.
+- 2x16-bit ra (Address / Memory address) register.
+  - ra0: Reference address.
+  - ra1: Return address.
 - 1x4-bit Configuration register:
   - 1-bit: Carry Behaviour (1:enable/0:disable), default enable.
-  - 1-bit: Interruption: When enabled, jumps to **ar1** register when an '*interruption sign*' is received.
+  - 1-bit: Interruption: When enabled, jumps to **ra1** register when an '*interruption sign*' is received.
   - 2-bit: Link Mode:
     - 2b00: UL (Unlinked) - 4-bit mode (Default).
     - 2b01: LK8 (Link 8) - 8-bit mode.
@@ -50,14 +50,14 @@ Instructions review:
 ## Instructions Review:
 - **RR**: Rotate Register - It will treat Rd (Operand) as a single register and shift rotate it by "Operation mode" size.
 - **RS/RA**: It will treat RS/RA as a stack and rotate it *(currently looks like a swap, but later on if more register where added it will truly rotate)*.
-- **JAL/JMP**: All jumps will be based on register ar0, but linking would be saved on ar1.
+- **JAL/JMP**: All jumps will be based on register ra0, but linking would be saved on ra1.
 - **CFG**: 4-bit load where Loads CPU configuration, config description (from most to least significant bit):
   - b3: Carry behaviour (default: 1, enabled).
   - b2: Interruption behaviour (default: 0, disable).
   - b1-0: Link mode (default: 00, Unlink).
 - **BTST/TST**: BTST will test rd based on index apointed by rs0, while TST will utilize rs0 as a mask to compare.
 - **XOP**: Executes next instruction as Extended Operation.
-- **XMEM**: Extended Memory Operations - Works as flag = 4b0_0_00 where (from most to least significant bit):
+- **XMEM**: Extended Memory Operations - Next instruction will be decoded as 4b0_0_00 where (from most to least significant bit):
   - 1-bit: Load/Store flag:
     - 0: Load.
     - 1: Store.
@@ -91,9 +91,9 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
           |---------------------------------| 
 
           |---------------------------------| 
-      ar1 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
+      ra1 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
           |---------------------------------| 
-      ar0 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
+      ra0 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
           |---------------------------------| 
 
           |---------------------------------| 
