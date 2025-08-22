@@ -1,6 +1,6 @@
 # MISA-O
 **My ISA Version 0** is a 4-bit MISC ISA made to be functional.
->The specification is still under development...
+>The specification is under review...
 
 ## Architecture
 MISA-O is a 4-bit architecture, it consist of one program counter register, four 4-bit operand register, two 16-bit operator register and two 16-bit memory address register. Operand register can be linked to work as 2x8-bit or 1x16-bit besides the original 4x4-bit mode, while active operator will always provide values accordingly with operand size. Logic operations will primarily be on Operand register and store the result in itself, while memory operation will use active memory address register as address. The Operand register can be rotated Left or right in sets (like operation Shift rotate left/right by 4).
@@ -9,55 +9,62 @@ MISA-O is a 4-bit architecture, it consist of one program counter register, four
 - 1x16-bit PC (Program Counter) register.
 - 4x4-bit rd (Operand / Register Destiny) register.
 - 2x16-bit rs (Operator / Register Source) register.
-- 2x16-bit addr (Address / Memory address) register.
-  - addr0: Reference address.
-  - add1: Return address.
-- Link Mode:
-  - UL: 4-bit mode (Default - Unlink).
-  - LK8: 8-bit mode (Link 8).
-  - LK16: 16-bit mode (Link 16).
-- Logic behaviour:
-  - 0: Default behaviour.
-  - 1: Inverse Logic behaviour (AND became NAND).
-- RR (Rotate Register): It will treat Rd (Operand) as a single register and shift rotate it by "Operation mode" size.
-- RS/RA: It will treat RS/RA as a stack and rotate it *(currently looks like a swap, but later on if more register where added it will truly rotate)*.
-- JAL/JMP: All jumps will be based on register addr0, but linking would be saved on addr1.
-- CFG: 4-bit load where Loads CPU configuration, can be accessed by reading memory address 0 (internal registry mapped to memory), config description (from most to least significant bit):
-  - b3: Auto-increment behaviour (default: 0, disable).
-  - b2: Interruption behaviour (default: 0, disable).
-  - b1-0: Link mode (default: 00, Unlink).
-- XOP: Executes next instruction as Operation Mode 1.
-- BTST/TST: BTST will test rd based on index apointed by rs0, while TST will utilize rs0 as a mask to compare.
-- Interruption: When enabled, will jump to **TBD** when an Interruption sign is received. *(deciding betwen addr1 or internal registry mapped to memory)*
+- 2x16-bit ar (Address / Memory address) register.
+  - ar0: Reference address.
+  - ar1: Return address.
+- 1x4-bit Configuration register:
+  - 1-bit: Carry Behaviour (1:enable/0:disable), default enable.
+  - 1-bit: Interruption: When enabled, jumps to **ar1** register when an '*interruption sign*' is received.
+  - 2-bit: Link Mode:
+    - 2b00: UL (Unlinked) - 4-bit mode (Default).
+    - 2b01: LK8 (Link 8) - 8-bit mode.
+    - 2b10: LK16 (Link 16) - 16-bit mode.
+    - 2b11: Reserved - Future use.
 
 ## Instructions
-The following table lists the architecture current instructions.
+The following table lists the architecture instructions:
 
-|Binary|Op Mode 0   |Op Mode 1   |Description                             |
-|------|------------|------------|----------------------------------------|
-| 0001 |AND         |NAND        |                                        |
-| 0101 |OR          |NOR         |                                        |
-| 1001 |XOR         |XNOR        |                                        |
-| 1101 |SHL         |SHR         | Shift Left/Right                       |
-| 0011 |ADDc        |SUBc        | Add/Sub with Carry                     |
-| 1011 |INC         |DEC         | Increment/Decrement                    |
-| 0111 |BEQz        |BC          | Branch if Equal Zero / Branch if Carry |
-| 1111 |**BTST**    |**TST**     | Branch Test / Test                     |
-| 0010 |JAL         |JMP         | Jump and Link / Jump                   |
-| 0110 |RR          |RL          | Rotate Register(rd) Right/Left         |
-| 1010 |RS          |RA          | Rotate Source/Address Registers        |
-| 1110 |SS          |SA          | Swap Source/Address Registers          |
-| 0100 |LDi         |**IMUL**    | Load Immediate / Integer Multiplication|
-| 1100 |LD          |SW          | Load Word / Store Word                 |
-| 1000 |**XOP**     |**CFG**     | Extend Operation / Load Configuration  |
-| 0000 |NOP         |NOP         | No Operation                           |
+|Binary|Default     |Extended    |Description                               |
+|------|------------|------------|------------------------------------------|
+| 0001 |AND         |NAND        |                                          |
+| 0101 |OR          |NOR         |                                          |
+| 1001 |XOR         |XNOR        |                                          |
+| 1101 |SHL         |SHR         | Shift Left/Right                         |
+| 0011 |ADD         |SUB         | Add/Sub                                  |
+| 1011 |INC         |DEC         | Increment/Decrement                      |
+| 0111 |BEQz        |BC          | Branch if Equal Zero / Branch if Carry   |
+| 1111 |**BTST**    |**TST**     | Branch Test / Test                       |
+| 0010 |JAL         |JMP         | Jump and Link / Jump                     |
+| 0110 |RR          |RL          | Rotate Register(rd) Right/Left           |
+| 1010 |RS          |RA          | Rotate Source/Address Registers          |
+| 1110 |SS          |SA          | Swap Source/Address Registers            |
+| 0100 |LDi         |**IMUL\***  | Load Immediate / Integer Multiplication  |
+| 1100 |XMEM        |            | Extended Memory Operations               |
+| 1000 |**XOP**     |**CFG**     | Extended Operations / Load Configuration |
+| 0000 |NOP         |NOP         | No Operation                             |
 
-Instructions under review:
+Instructions review:
 - \* : Not mandatory instructions.
 - **Bold**: Newly added / under review.
-- **IMUL**: Feasibility/Usability of a Multiplication instruction is under review.
-- **LK**: Link was demoted to be replaced by a more versatile "Load Configuration", now it's possible to enable auto increment when reading/writing from/to memory with the advantage of also be able to secure a known working state for the functions.
-- **NEG**: Replaced by **XOP** in order to experiment with a more common behavior of a non-persistent change of instructions behaviours.
+
+## Instructions Review:
+- **RR**: Rotate Register - It will treat Rd (Operand) as a single register and shift rotate it by "Operation mode" size.
+- **RS/RA**: It will treat RS/RA as a stack and rotate it *(currently looks like a swap, but later on if more register where added it will truly rotate)*.
+- **JAL/JMP**: All jumps will be based on register ar0, but linking would be saved on ar1.
+- **CFG**: 4-bit load where Loads CPU configuration, config description (from most to least significant bit):
+  - b3: Carry behaviour (default: 1, enabled).
+  - b2: Interruption behaviour (default: 0, disable).
+  - b1-0: Link mode (default: 00, Unlink).
+- **BTST/TST**: BTST will test rd based on index apointed by rs0, while TST will utilize rs0 as a mask to compare.
+- **XOP**: Executes next instruction as Extended Operation.
+- **XMEM**: Extended Memory Operations - Works as flag = 4b0_0_00 where (from most to least significant bit):
+  - 1-bit: Load/Store flag:
+    - 0: Load.
+    - 1: Store.
+  - 1-bit: Auto-increment flag:
+    - 0: Disabled.
+    - 1: Enabled.
+  - 2-bit: Data position flag based on Link mode.
 
 ## Reference Implementation
 The reference implementation (located at "/design/misa-o_ref.sv") is not made to be performant, efficient, optimal or even synthesizable; its main purpose is to be simple to interpret while also serving as a playground to test the ISA instructions.
@@ -75,14 +82,18 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
 
 ## Registers Overview
 
+          |---------| 
+      CFG | 0 0 0 0 | 
+          |---------| 
+
           |---------------------------------| 
        PC | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
           |---------------------------------| 
 
           |---------------------------------| 
-    addr1 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
+      ar1 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
           |---------------------------------| 
-    addr0 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
+      ar0 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
           |---------------------------------| 
 
           |---------------------------------| 
@@ -94,3 +105,8 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
           |---------------------------------|
       rs1 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 |
           |---------------------------------| 
+
+## Finals Considerations
+**NEG**:Started with NEG/Negated instructions/behaviour, but was replaced with a more default behaviour (**XOP**) of only affect the next instruction, this change allowed for a better compression and a more stable behaviour, this will also help in a compiler construction.
+**LK**: Link was demoted to be replaced by a more versatile "Load Configuration", now it's possible to enable auto increment when reading/writing from/to memory with the advantage of also be able to secure a known working state for the functions.
+**CFG-R**: A way to read the configuration register is under consideration, currently a direct memory map would be the simplest.
