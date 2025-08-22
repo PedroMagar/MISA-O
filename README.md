@@ -27,6 +27,7 @@ MISA-O is a 4-bit architecture, it consist of one program counter register, four
   - b2: Interruption behaviour (default: 0, disable).
   - b1-0: Link mode (default: 00, Unlink).
 - NX: Executes Next Instruction as Operation Mode 1.
+- BTST/TST: BTST will test rd based on index apointed by rs0, while TST will utilize rs0 as a mask to compare.
 - Interruption: When enabled, will jump to **TBD** when an Interruption sign is received. *(deciding betwen addr1 or internal registry mapped to memory)*
 
 ## Instructions
@@ -41,14 +42,14 @@ The following table lists the architecture current instructions.
 | 0011 |ADDc        |SUBc        | Add/Sub with Carry                     |
 | 1011 |INC         |DEC         | Increment/Decrement                    |
 | 0111 |BEQz        |BC          | Branch if Equal Zero / Branch if Carry |
-| 1111 |JAL         |JMP         | Jump and Link / Jump                   |
-| 0010 |**CFG**     |**CFG**     | Load Configuration                     |
+| 1111 |**BTST**    |**TST**     | Branch Test / Test                     |
+| 0010 |JAL         |JMP         | Jump and Link / Jump                   |
 | 0110 |RR          |RL          | Rotate Register(rd) Right/Left         |
 | 1010 |RS          |RA          | Rotate Source/Address Registers        |
-| 1110 |**SS**      |**SA**      | Swap Source/Address Registers          |
+| 1110 |SS          |SA          | Swap Source/Address Registers          |
 | 0100 |LDi         |LD          | Load Immediate / Load word             |
 | 1100 |SW          |SW          | Store Word                             |
-| 1000 |**NX**      |**NX**      | Next Instruction                       |
+| 1000 |**NX**      |**CFG**     | Next Instruction / Load Configuration  |
 | 0000 |NOP         |NOP         | No Operation                           |
 
 Instructions under review:
@@ -63,8 +64,6 @@ Currently there are some instructions that could became part of the ISA:
 |Binary|Instruction |Description                             |
 |------|------------|----------------------------------------|
 | 0000 |IMUL (!)    | Integer Multiplication                 |
-| 0000 |**LK**      | Link Registers                         |
-| 0010 |NEG         | Negate                                 |
 
 ## Reference Implementation
 The reference implementation (located at "/design/misa-o_ref.sv") is not made to be performant, efficient, optimal or even synthesizable; its main purpose is to be simple to interpret while also serving as a playground to test the ISA instructions.
