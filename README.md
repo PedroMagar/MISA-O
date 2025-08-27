@@ -54,29 +54,38 @@ Instructions review:
 - **RR/RL**: Rotate Accumulator - It will treat acc (Accumulator) as a single register and shift rotate it by "Operation mode" size.
 - **RS/RA**: It will treat RS/RA as a stack and rotate it *(currently looks like a swap, but later on if more register where added it will truly rotate)*.
 - **JAL/JMP**: All jumps will be based on register ra0, but linking would be saved on ra1.
-- **CFG #f**: Loads next instruction (4-bit) as CPU configuration.
-- **Branches**: If true, will signal add lower 8-bit from ra[0] to PC:
-  - **BEQz**: Branch if acc is Equal to Zero.
-  - **BC**: Branch if Carry flag is currently filled as true.
-  - **BTST**: BTST will test acc based on index apointed by rs0, acc is not written.
-  - **TST**: Will utilize rs0 as a mask to acc and compare, acc is not written.
+- **CFG #f**: Loads the 4-bit constant f into the configuration register (bits: IE, SIGN, LINK[1:0]).
+- **Branches**: If the condition is true, the **PC is updated by adding a signed 8-bit offset from ra0[7:0]**:
+  - **BEQz**: Branch if `acc == 0`.
+  - **BC**: Branch if `Carry C == 1`.
+  - **BTST**: Tests bit `acc[idx]` where `idx = rs0[3:0]`; sets `C=bit`; `acc` not written.
+  - **TST**: Utilizes rs0 as a mask to acc and compare (`tmp = acc & rs0`), acc not written.
+    >*Branch* behaviour is under review to replace the use of ra0 by #imm4 or #imm8
 - **XOP**: Executes next instruction as Extended Operation.
-- **XMEM #f**: Extended Memory Operations - Next instruction will be decoded as 4b0_0_0_0 where (from most to least significant bit):
-  - 1-bit: Reserved:
-    - 0: Default behavior.
-    - 1: Future use.
-  - 1-bit: Address flag:
-    - 0: Utilizes ra0.
-    - 1: Utilizes ra1.
-  - 1-bit: Auto-increment flag:
-    - 0: Disabled.
-    - 1: Enabled.
-  - 1-bit: Load/Store flag:
-    - 0: Load.
-    - 1: Store.
-- **Interrupts**: Interrupts will work by storing the upper address on 'ia' (Interrupt Address) register, since 'ia' register is only 8-bit the address will be completed with zeros, when an interrupt arrives the cpu will then store all of it's registers at 'ia' location, update 'iar' (Interrupt Address Return), clear it's register (including configuration) and execute the instrucions after the stored data, when return arrives it will restore everything from 'iar' location. 
-    - **SIA**: Will swap lower acc data with ia register (ia = acc[7:0] && acc[7:0] = ia).
-    - **RETI**: Will restore registers from data on 'iar' location.
+- **XMEM #f**: Extended Memory Operations (opcode 1100 + 4-bit function):
+  - Function:
+    - `f[3]`: **RSV**: reserved (0)
+    - `f[2]`: **OP**: 0=Load, 1=Store
+    - `f[1]`: **AM**: 0=none, 1=post-increment
+    - `f[0]`: **AR**: 0=ra0, 1=ra1
+  - Semantics (width W from LINK):
+    - **LD**: 
+      - **LK16**: `acc ← [ra0]`
+      - **LK8**: `acc[7:0] ← [ra0]`
+      - **UL**: `acc[3:0] ← [ra0]`
+    - **SW**:
+      - **LK16**: `[ra0] ← acc[7:0]; [ra0+1] ← acc[15:8]`
+      - **LK8**: `[ra0] ← acc[7:0]`
+      - **UL**: `tmp ← [ra0]; tmp[3:0] ← acc[3:0]; [ra0] ← tmp`
+    - If `AM=1`: `addr += (W==16 ? 2 : 1)`
+    - Flags: **unchanged**.
+- **Interrupts**:
+    - **Interrupts**: *ia* holds the *Interrupt Service Routine* (ISR) page *most significant byte* (MSB). On interrupt:
+      - The CPU **stores PC_next, CFG/FLAGS, acc, RS0/RS1, RA0/RA1** at fixed offsets in page `ia` (see layout below),
+      - latches `iar ← ia`, **clears IE**, clears any pending **XOP**, and
+      - **jumps to** `ia<<8 + 0x10` (the ISR entry).
+    - **SIA**: Swap lower *acc* data (acc[7:0]) with *ia* register (ia = acc[7:0] && acc[7:0] = ia).
+    - **RETI**: Restore registers with data from *iar* location.
     - Fixed layout within the ia page:
 ```
       base = ia << 8
@@ -154,4 +163,10 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
 
 **LK**: Link was demoted to be replaced by a more versatile "Load Configuration", now it's possible to enable auto increment when reading/writing from/to memory with the advantage of also be able to secure a known working state for the functions.
 
-**CFG-R**: A way to read the configuration register is under consideration, currently a direct memory map would be the simplest.
+**Alternate Branch**:
+- **Branches**: If the condition is true, the **PC is updated by adding a signed 8-bit offset encoded in the instruction** (PC-relative).
+  - **BEQz**: branch if **acc == 0** (Z=1).
+  - **BC**: branch if **Carry C == 1**.
+  - Helpers:
+    - **BTST**: tests bit **acc[idx]** with `idx = rs0 & (W−1)`; sets `C=bit, Z=~C`; **acc not written**.
+    - **TST**: computes `tmp = acc & rs0`; sets `Z=(tmp==0), N=tmp[W−1]`; **acc not written**.
