@@ -3,25 +3,30 @@
 >The specification is under review...
 
 ## Architecture
-MISA-O is a 4-bit architecture, it consist of one program counter register, four 4-bit operand register, two 16-bit operator register and two 16-bit memory address register. Operand register can be linked to work as 2x8-bit or 1x16-bit besides the original 4x4-bit mode, while active operator will always provide values accordingly with operand size. Logic operations will primarily be on Operand register and store the result in itself, while memory operation will use active memory address register as address. The Operand register can be rotated Left or right in sets (like operation Shift rotate left/right by 4).
+MISA-O is a 4-bit MISC accumulator ISA with variable-length encoding (nibble/byte immediates) and an XOP prefix for extensions. Memory is accessed via a single XMEM class (load/store, optional post-inc). The architecture consist of one program counter register, four 4-bit accumulator register, two 16-bit source register and two 16-bit memory address register. Accumulator register can be linked to work as 2x8-bit or 1x16-bit besides the original 4x4-bit mode, while active source will always provide values accordingly with accumulator size. Logic operations will primarily be on accumulator register and store the result in itself, while memory operation will use active memory address register as address. The accumulator register can be rotated Left or right in sets (like operation Shift rotate left/right by 4).
 
 ### Characteristics:
 - 1x16-bit pc (Program Counter) register.
 - 1x8-bit ia (Interrupt Address) register.
 - 1x8-bit iar (Interrupt Address Return) register.
-- 4x4-bit acc (Accumulator / Operand) register.
-- 2x16-bit rs (Operator / Register Source) register.
-- 2x16-bit ra (Address / Memory address) register.
-  - ra0: Reference address.
+- 4x4-bit acc (Accumulator) register.
+- 2x16-bit rs (Register Source) register.
+- 2x16-bit ra (Address) register.
+  - ra0: Active address.
   - ra1: Return address.
-- 1x4-bit Configuration register.
-  - [3]: Interrupts (1:enable/0:disable), default disable.
-  - [2]: Sign (1:signed/0:unsigned), default signed.
-  - [1:0]: Link Mode:
+- 1x8-bit Configuration register.
+  - [7]: BRS - Branch relative scale (0: 1-byte / 1: 2-bytes), default 1-byte.
+  - [6]: MDIR - Memory auto-increment direction (0: +stride / 1: -stride), default +stride.
+  - [5]: IE_RETI: Return from interrupt state (1: complete / 0: essentials), default complete.
+  - [4]: IE: Interrupts (1: enable / 0: disable), default disable.
+  - [3]: CEN - Carry (1: enable / 0: disable), default enable.
+  - [2]: SIGN- Sign (1: signed / 0: unsigned), default signed.
+  - [1:0]: LINK - Link Mode:
     - 2b00: UL (Unlinked) - 4-bit mode (Default).
     - 2b01: LK8 (Link 8) - 8-bit mode.
     - 2b10: LK16 (Link 16) - 16-bit mode.
     - 2b11: Reserved - Future use.
+  >MDIR and IE_RETI are, MDIR could be replaced by using the last bit from XMEM, while IE_RETI has a very dubious reason to exist since the program could simply always make a complete restore.
 
 ## Instructions
 The following table lists the architecture instructions:
@@ -35,7 +40,7 @@ The following table lists the architecture instructions:
 | 0011 |ADD       |SUB       | Add / Sub                                          |
 | 1011 |INC       |DEC       | Increment / Decrement                              |
 | 0111 |BEQz      |BC        | Branch if Equal Zero / Branch if Carry             |
-| 1111 |**BTST**  |**TST**   | Bit Test / Test                                    |
+| 1111 |BTST      |TST       | Bit Test / Test                                    |
 | 0010 |JAL       |JMP       | Jump and Link / Jump                               |
 | 0110 |RR        |RL        | Rotate Accumulator (acc) Right/Left                |
 | 1010 |RS        |RA        | Rotate Source/Address Registers                    |
@@ -54,8 +59,8 @@ Instructions review:
 - **RR/RL**: Rotate Accumulator - It will treat acc (Accumulator) as a single register and shift rotate it by "Operation mode" size.
 - **RS/RA**: It will treat RS/RA as a stack and rotate it *(currently looks like a swap, but later on if more register where added it will truly rotate)*.
 - **JAL/JMP**: All jumps will be based on register ra0, but linking would be saved on ra1.
-- **CFG #f**: Loads the 4-bit constant f into the configuration register (bits: IE, SIGN, LINK[1:0]).
-- **Branches**: If the condition is true, the **PC is updated by adding a signed 8-bit offset from ra0[7:0]**:
+- **CFG**: Swap CFG register with acc[7:0].
+- **Branches**: If the condition is true, the **PC is updated by adding a signed 8-bit offset encoded in the instruction** (PC-relative).
   - **BEQz**: Branch if `acc == 0`.
   - **BC**: Branch if `Carry C == 1`.
   - **BTST**: Tests bit `acc[idx]` where `idx = rs0[3:0]`; sets `C=bit`; `acc` not written.
@@ -128,9 +133,9 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
 
 ## Registers Overview
 
-          |---------| 
-      cfg | 0 0 0 0 | 
-          |---------| 
+          |-----------------| 
+      cfg | 0 0 0 0 0 0 0 0 | 
+          |-----------------| 
 
           |-----------------| 
        ia | 0 0 0 0 0 0 0 0 | 
@@ -163,10 +168,4 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
 
 **LK**: Link was demoted to be replaced by a more versatile "Load Configuration", now it's possible to enable auto increment when reading/writing from/to memory with the advantage of also be able to secure a known working state for the functions.
 
-**Alternate Branch**:
-- **Branches**: If the condition is true, the **PC is updated by adding a signed 8-bit offset encoded in the instruction** (PC-relative).
-  - **BEQz**: branch if **acc == 0** (Z=1).
-  - **BC**: branch if **Carry C == 1**.
-  - Helpers:
-    - **BTST**: tests bit **acc[idx]** with `idx = rs0 & (W−1)`; sets `C=bit, Z=~C`; **acc not written**.
-    - **TST**: computes `tmp = acc & rs0`; sets `Z=(tmp==0), N=tmp[W−1]`; **acc not written**.
+**Branches**: Planned to be based on ra0, under some consideration it was changed to immediate value. Because of the small quantity of registers this seens more reasonable, but could be changed back to utilize ra0.
