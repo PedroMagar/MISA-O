@@ -15,10 +15,9 @@ MISA-O is a 4-bit MISC accumulator ISA with variable-length encoding (nibble/byt
   - ra0: Active address.
   - ra1: Return address.
 - 1x8-bit Configuration register.
-  - [7]: BRS - Branch relative scale (0: 1-byte / 1: 2-bytes), default 1-byte.
-  - [6]: MDIR - Memory auto-increment direction (0: +stride / 1: -stride), default +stride.
-  - [5]: IE_RETI: Return from interrupt state (1: complete / 0: essentials), default complete.
-  - [4]: IE: Interrupts (1: enable / 0: disable), default disable.
+  - [7:6]: BRS - Branch relative scale, default 1-byte.
+  - [5]: IE_RETI: Return from interrupt state (0: complete / 1: essentials), default complete.
+  - [4]: IE: Interrupts (0: disable / 1: enable), default disable.
   - [3]: CEN - Carry (1: enable / 0: disable), default enable.
   - [2]: SIGN - Signed mode (1: signed / 0: unsigned), default signed.
   - [1:0]: LINK - Link Mode:
@@ -26,7 +25,7 @@ MISA-O is a 4-bit MISC accumulator ISA with variable-length encoding (nibble/byt
     - 2b01: LK8 (Link 8) - 8-bit mode.
     - 2b10: LK16 (Link 16) - 16-bit mode.
     - 2b11: Reserved - Future use.
-  >MDIR and IE_RETI are concepts, MDIR could be replaced by using the last bit from XMEM, while IE_RETI has a very dubious reason to exist since the program could simply always make a complete restore.
+  >IE_RETI usefulness is under review.
 
 ## Instructions
 The following table lists the architecture instructions:
@@ -46,14 +45,13 @@ The following table lists the architecture instructions:
 | 1010 |RS        |RA        | Rotate Source/Address Registers                    |
 | 1110 |SS        |SA        | Swap Source/Address Registers                      |
 | 0100 |LDi       |**SIA**   | Load Immediate / Swap Interrupt Address            |
-| 1100 |**XMEM**  |**RETI**  | Extended Memory Operations / Return from Interrupt |
-| 1000 |**XOP**   |**CFG**   | Extended Operations / Load Configuration           |
-| 0000 |NOP       |**SDI**   | No Operation / Send Interrupt                      |
+| 1100 |XMEM      |**RETI**  | Extended Memory Operations / Return from Interrupt |
+| 1000 |XOP       |CFG       | Extended Operations / Swap Configuration           |
+| 0000 |NOP       |**CC**    | No Operation / Clear Carry                         |
 
 Instructions review:
 - \* : Not mandatory instructions.
 - **Bold**: Newly added / under review.
-- **IMUL**: Removed due to the need of a better Interrupt behaviour.
 
 ## Instructions Review:
 - **RR/RL**: Rotate Accumulator - It will treat acc (Accumulator) as a single register and shift rotate it by "Operation mode" size.
@@ -68,9 +66,9 @@ Instructions review:
 - **XOP**: Executes next instruction as Extended Operation.
 - **XMEM #f**: Extended Memory Operations (opcode 1100 + 4-bit function):
   - Function:
-    - `f[3]`: **RSV**: reserved (0)
-    - `f[2]`: **OP**: 0=Load, 1=Store
-    - `f[1]`: **AM**: 0=none, 1=post-increment
+    - `f[3]`: **OP**: 0=Load, 1=Store
+    - `f[2]`: **AM**: 0=none, 1=post-increment
+    - `f[1]`: **DIR**:  0 = +stride (increment), 1 = −stride (decrement)
     - `f[0]`: **AR**: 0=ra0, 1=ra1
   - Semantics (width W from LINK):
     - **LD**: 
@@ -96,7 +94,7 @@ Instructions review:
       +0x00 : PC_next[7:0]
       +0x01 : PC_next[15:8]
       +0x02 : CFG snapshot (1 byte)
-      +0x03 : FLAGS snapshot (Z/C/N/V, 1B)
+      +0x03 : FLAGS snapshot
       +0x04 : ACC (16-bit)
       +0x06 : RS0 (16-bit)
       +0x08 : RS1 (16-bit)
@@ -114,7 +112,8 @@ Instructions review:
 Currently there are some instructions that could became part of the ISA:
 |Binary|Instruction |                                           |
 |------|------------|-------------------------------------------|
-| 0000 |**IMUL**\*  | Integer Multiplication                    |
+| 0000 |IMUL*       | Integer Multiplication                    |
+| 0000 |SDI         | Send Interrupt                            |
 
 ## Reference Implementation
 The reference implementation (located at "/design/misa-o_ref.sv") is not made to be performant, efficient, optimal or even synthesizable; its main purpose is to be simple to interpret while also serving as a playground to test the ISA instructions.
@@ -165,6 +164,8 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
 ## Finals Considerations
 **NEG**:Started with NEG/Negated instructions/behaviour, but was replaced with a more default behaviour (**XOP**) of only affect the next instruction, this change allowed for a better compression and a more stable behaviour, this will also help in a compiler construction.
 
-**LK**: Link was demoted to be replaced by a more versatile "Load Configuration", now it's possible to enable auto increment when reading/writing from/to memory with the advantage of also be able to secure a known working state for the functions.
+**LK**: Link was demoted to be replaced by a more versatile "Swap Configuration", now it's possible to enable auto increment when reading/writing from/to memory with the advantage of also be able to secure a known working state for the functions.
 
 **Branches**: Planned to be based on ra0, under some consideration it was changed to immediate value. Because of the small quantity of registers this seens more reasonable, but could be changed back to utilize ra0.
+
+**Multiply**: The area/power cost of a hardware multiplier is high for this class of core, and the **base opcode map is full**. Comparable minimal CPUs also omit MUL. Software emulation (shift-add) handles 4/8/16-bit cases well — especially with *CEN* and *CC* — so the practical impact is low.
