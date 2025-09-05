@@ -3,7 +3,7 @@
 >The specification is under review...
 
 ## Architecture
-MISA-O is a 4-bit MISC accumulator ISA with variable-length encoding (nibble/byte immediates) and an XOP prefix for extensions. Memory is accessed via a single XMEM class (load/store, optional post-inc). The architecture consist of one program counter register, four 4-bit accumulator registers, two 16-bit source registers and two 16-bit memory address registers. Accumulator registers can be linked to work as 2x8-bit or 1x16-bit besides the original 4x4-bit mode, while active source will always provide values accordingly with accumulator size. Logic operations will primarily be on accumulator register and store the result in itself, while memory operation will use active memory address register as address. The accumulator register can be rotated Left or right in sets (like operation Shift rotate left/right by 4).
+MISA-O is a 4-bit MISC accumulator ISA with variable-length encoding (nibble/byte immediates) and an XOP prefix for extensions. Memory is accessed via a single XMEM class (load/store, optional post-inc). The architecture consists of one program counter register, four 4-bit accumulator registers, two 16-bit source registers and two 16-bit memory address registers. Accumulator registers can be linked to work as 2x8-bit or 1x16-bit besides the original 4x4-bit mode, while active source will always provide values accordingly with accumulator size. Logic operations will primarily be on accumulator register and store the result in itself, while memory operation will use active memory address register as address. The accumulator register can be rotated Left or right in sets (like operation Shift rotate left/right by the active width (W)).
 
 ### Characteristics:
 - 1x16-bit pc (Program Counter) register.
@@ -14,13 +14,19 @@ MISA-O is a 4-bit MISC accumulator ISA with variable-length encoding (nibble/byt
 - 2x16-bit ra (Address) register.
   - ra0: Active address.
   - ra1: Return address.
-- 1x8-bit Configuration register.
+- 1x8-bit cfg (Configuration) register.
   - [7:6]: BRS - Branch relative scale, default 1-byte.
-  - [5]: IE_RETI: Return from interrupt state (0: complete / 1: essentials), default complete.
+    - 00: ×1 (<<0), 1-byte step
+    - 01: ×2 (<<1), 2-bytes steps
+    - 10: ×3 (<<2), 4-bytes steps
+    - 11: reserved
+  - [5]: IE_RETI: Return behaviour from interrupt state (1: complete / 0: essentials), default complete.
+    - complete: restores all registers before interruption.
+    - essentials: restores only pc, cfg and ia registers, clears iar.
   - [4]: IE: Interrupts (0: disable / 1: enable), default disable.
   - [3]: CEN - Carry (1: enable / 0: disable), default enable.
   - [2]: SIGN - Signed mode (1: signed / 0: unsigned), default signed.
-  - [1:0]: LINK - Link Mode:
+  - [1:0]: W - LINK - Link Mode:
     - 2b00: UL (Unlinked) - 4-bit mode (Default).
     - 2b01: LK8 (Link 8) - 8-bit mode.
     - 2b10: LK16 (Link 16) - 16-bit mode.
@@ -54,15 +60,17 @@ Instructions review:
 - **Bold**: Newly added / under review.
 
 ## Instructions Review:
-- **RR/RL**: Rotate Accumulator - It will treat acc (Accumulator) as a single register and shift rotate it by "Operation mode" size.
+- **RR/RL**: Rotate Accumulator - It will treat acc (Accumulator) as a single register and shift rotate it by "Operation mode" size. *(flags unchanged)*
 - **RS/RA**: It will treat RS/RA as a stack and rotate it *(currently looks like a swap, but later on if more register where added it will truly rotate)*.
 - **JAL/JMP**: All jumps will be based on register ra0, but linking would be saved on ra1.
+  - **JAL**: `ra1 ← PC_next`; `PC ← ra0`
+  - **JMP**: `PC ← ra0`
 - **CFG**: Swap CFG register with acc[7:0].
-- **Branches**: If the condition is true, the **PC is updated by adding a signed 8-bit offset encoded in the instruction** (PC-relative). **If BRS is true, offset will be left shift by 1** before adding (steps of 2-bytes).
+- **Branches**: If the condition is true, the **PC is updated by adding a signed 8-bit offset encoded in the instruction shifted by BRS** *(PC-relative)*. **True** behaviour: **PC ← PC_next + ( sign_extend(imm8) << BRS ), where BRS ∈ {0,1,2}**;  **Otherwise**, **PC ← PC_next**. (Branches do not modify flags)
   - **BEQz**: Branch if `acc == 0`.
   - **BC**: Branch if `Carry C == 1`.
-  - **BTST**: Tests bit `acc[idx]` where `idx = rs0[3:0]`; sets `C=bit`; `acc` not written.
-  - **TST**: Utilizes rs0 as a mask to acc and compare (`tmp = acc & rs0`), acc not written.
+  - **BTST**: Tests bit `acc[idx]` where `idx = rs0[3:0]`; sets `C=bit`; `acc` not written. (Limited by link mode)
+  - **TST**: Utilizes rs0 as a mask to acc and compare (`tmp = acc & rs0`), acc not written. (Limited by link mode)
 - **XOP**: Executes next instruction as Extended Operation.
 - **XMEM #f**: Extended Memory Operations (opcode 1100 + 4-bit function):
   - Function:
@@ -70,15 +78,15 @@ Instructions review:
     - `f[2]`: **AM**: 0=none, 1=post-increment
     - `f[1]`: **DIR**:  0 = +stride (increment), 1 = −stride (decrement)
     - `f[0]`: **AR**: 0=ra0, 1=ra1
-  - Semantics (width W from LINK):
+  - Semantics (width W from LINK, little-endian):
     - **LD**: 
-      - **LK16**: `acc ← [ra0]`
-      - **LK8**: `acc[7:0] ← [ra0]`
-      - **UL**: `acc[3:0] ← [ra0]`
+      - **LK16**: `acc ← [addr]`
+      - **LK8**: `acc[7:0] ← [addr]`
+      - **UL**: `acc[3:0] ← [addr]`
     - **SW**:
-      - **LK16**: `[ra0] ← acc[7:0]; [ra0+1] ← acc[15:8]`
-      - **LK8**: `[ra0] ← acc[7:0]`
-      - **UL**: `tmp ← [ra0]; tmp[3:0] ← acc[3:0]; [ra0] ← tmp`
+      - **LK16**: `[addr] ← acc[7:0]; [ra0+1] ← acc[15:8]`
+      - **LK8**: `[addr] ← acc[7:0]`
+      - **UL**: `tmp ← [addr]; tmp[3:0] ← acc[3:0]; [addr] ← tmp`
     - If `AM=1`: `addr += (W==16 ? 2 : 1)`
     - Flags: **unchanged**.
 - **Interrupts**:
@@ -101,7 +109,7 @@ Instructions review:
       +0x0A : RA0 (16-bit)
       +0x0C : RA1 (16-bit)
       +0x0E : reserved (2 bytes)
-      +0x10 : ISR entry (first instruction executed on entry)'
+      +0x10 : ISR entry (first instruction executed on entry)
 ```
 - **Carry**: CEN: when 1, ADD/SUB/INC/DEC use carry/borrow-in and update C; when 0, carry-in is forced to 0 (C still updated):
   - **ADD/INC**: Carry-out.
@@ -161,11 +169,11 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
       rs1 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 |
           |---------------------------------| 
 
-## Finals Considerations
+## Final Considerations
 **NEG**:Started with NEG/Negated instructions/behaviour, but was replaced with a more default behaviour (**XOP**) of only affect the next instruction, this change allowed for a better compression and a more stable behaviour, this will also help in a compiler construction.
 
 **LK**: Link was demoted to be replaced by a more versatile "Swap Configuration", now it's possible to enable auto increment when reading/writing from/to memory with the advantage of also be able to secure a known working state for the functions.
 
-**Branches**: Planned to be based on ra0, under some consideration it was changed to immediate value. Because of the small quantity of registers this seens more reasonable, but could be changed back to utilize ra0.
+**Branches**: Planned to be based on ra0, under some consideration it was changed to immediate value. Because of the small quantity of registers this seems more reasonable, but could be changed back to utilize ra0.
 
 **Multiply**: The area/power cost of a hardware multiplier is high for this class of core, and the **base opcode map is full**. Comparable minimal CPUs also omit MUL. Software emulation (shift-add) handles 4/8/16-bit cases well — especially with *CEN* and *CC* — so the practical impact is low.
