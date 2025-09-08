@@ -15,14 +15,13 @@ MISA-O is a 4-bit MISC accumulator ISA with variable-length encoding (nibble/byt
   - ra0: Active address.
   - ra1: Return address.
 - 1x8-bit cfg (Configuration) register.
-  - [7:6]: BRS - Branch relative scale, default 1-byte.
-    - 00: ×1 (<<0), 1-byte step
-    - 01: ×2 (<<1), 2-bytes steps
-    - 10: ×3 (<<2), 4-bytes steps
-    - 11: reserved
-  - [5]: IE_RETI: Return behaviour from interrupt state (1: complete / 0: essentials), default complete.
-    - complete: restores all registers before interruption.
-    - essentials: restores only pc, cfg and ia registers, clears iar.
+  - [7]: Reserved, hard 0.
+  - [6]: BW - Branch immediate width, default imm8.
+    -  0: imm4 (1 byte total)
+    -  1: imm8 (2 bytes total)
+  - [5]: BRS - Branch relative scale, default 1-byte.
+    - 0: shift by 0, 1-byte step
+    - 1: shift by 2, 4-byte steps
   - [4]: IE: Interrupts (0: disable / 1: enable), default disable.
   - [3]: CEN - Carry (1: enable / 0: disable), default enable.
   - [2]: SIGN - Signed mode (1: signed / 0: unsigned), default signed.
@@ -31,7 +30,6 @@ MISA-O is a 4-bit MISC accumulator ISA with variable-length encoding (nibble/byt
     - 2b01: LK8 (Link 8) - 8-bit mode.
     - 2b10: LK16 (Link 16) - 16-bit mode.
     - 2b11: Reserved - Future use.
-  >IE_RETI usefulness is under review.
 
 ## Instructions
 The following table lists the architecture instructions:
@@ -66,7 +64,7 @@ Instructions review:
   - **JAL**: `ra1 ← PC_next`; `PC ← ra0`
   - **JMP**: `PC ← ra0`
 - **CFG**: Swap CFG register with acc[7:0].
-- **Branches**: If the condition is true, the **PC is updated by adding a signed 8-bit offset encoded in the instruction shifted by BRS** *(PC-relative)*. **True** behaviour: **PC ← PC_next + ( sign_extend(imm8) << BRS ), where BRS ∈ {0,1,2}**;  **Otherwise**, **PC ← PC_next**. (Branches do not modify flags)
+- **Branches**: If the condition is true, the **PC is updated by adding a signed 8-bit offset encoded in the instruction shifted by BRS** *(PC-relative)*. **True** behaviour: **PC ← PC_next + ( sign_extend(BW ? imm8 : imm4)) << (BRS ? 2 : 0) )**;  **Otherwise**, **PC ← PC_next**. (Branches do not modify flags)
   - **BEQz**: Branch if `acc == 0`.
   - **BC**: Branch if `Carry C == 1`.
   - **BTST**: Tests bit `acc[idx]` where `idx = rs0[3:0]`; sets `C=bit`; `acc` not written. (Limited by link mode)
@@ -95,26 +93,44 @@ Instructions review:
       - latches `iar ← ia`, **clears IE**, clears any pending **XOP**, and
       - **jumps to** `ia<<8 + 0x10` (the ISR entry).
     - **SIA**: Swap lower *acc* data (acc[7:0]) with *ia* register (ia = acc[7:0] && acc[7:0] = ia).
-    - **RETI**: Restore registers with data from *iar* location.
+    - **RETI**: Restores state from the *iar* page and resumes execution.
+      - Base address: **base = iar << 8**
+      - Hardware restores:
+        - **PC** ← [base+0x00..0x01]        ; PC_next snapshot
+        - **RA1** ← [base+0x0C..0x0D]       ; link/return register
+        - **IA**  ← [base+0x0E]             ; interrupt page MSB
+        - **IAR** ← [base+0x0F]             ; previous latched page (for nested unwinding)
+        - **CFG** ← [base+0x02]             ;
+        - **FLAGS** ← [base+0x03]           ;
+      - **Not restored by RETI**: **ACC**, **RS0**, **RS1**, **RA0** — the ISR must restore them in software before RETI.
+      - After RETI, **IE** follows the IE bit of the active **CFG** (restored or left as set by the ISR).
     - Fixed layout within the ia page:
 ```
+; Saved on interrupt entry. RETI reads from the IAR page:
       base = ia << 8
       +0x00 : PC_next[7:0]
       +0x01 : PC_next[15:8]
-      +0x02 : CFG snapshot (1 byte)
-      +0x03 : FLAGS snapshot
+      +0x02 : CFG snapshot (8-bit)
+      +0x03 : FLAGS snapshot (8-bit)
       +0x04 : ACC (16-bit)
       +0x06 : RS0 (16-bit)
       +0x08 : RS1 (16-bit)
       +0x0A : RA0 (16-bit)
       +0x0C : RA1 (16-bit)
-      +0x0E : reserved (2 bytes)
+      +0x0E : IA (8-bit)
+      +0x0F : IAR (8-bit)
       +0x10 : ISR entry (first instruction executed on entry)
 ```
 - **Carry**: CEN: when 1, ADD/SUB/INC/DEC use carry/borrow-in and update C; when 0, carry-in is forced to 0 (C still updated):
   - **ADD/INC**: Carry-out.
   - **SUB/DEC**: Borrow (C = 1).
   - **SHL/SHR**: Holds expelled bit.
+
+### Notes:
+- Branch
+  - BW/BRS are global (from CFG). Keep them constant within a function.
+  - With imm4 and large scaling (e.g., <<2), targets should be aligned accordingly to avoid padding.
+  - Taking a branch does not modify flags and clears any pending XOP.
 
 ### Development:
 Currently there are some instructions that could became part of the ISA:
