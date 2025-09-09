@@ -36,9 +36,9 @@ The following table lists the architecture instructions:
 
 |Binary|Default   |Extended  |Description                                         |
 |------|----------|----------|----------------------------------------------------|
-| 0001 |AND       |NAND      |                                                    |
-| 0101 |OR        |NOR       |                                                    |
-| 1001 |XOR       |XNOR      |                                                    |
+| 0001 |AND       |*NAND*    |                                                    |
+| 0101 |OR        |*NOR*     |                                                    |
+| 1001 |XOR       |*XNOR*    |                                                    |
 | 1101 |SHL       |SHR       | Shift Left / Right                                 |
 | 0011 |ADD       |SUB       | Add / Sub                                          |
 | 1011 |INC       |DEC       | Increment / Decrement                              |
@@ -48,14 +48,16 @@ The following table lists the architecture instructions:
 | 0110 |RR        |RL        | Rotate Accumulator (acc) Right/Left                |
 | 1010 |RS        |RA        | Rotate Source/Address Registers                    |
 | 1110 |SS        |SA        | Swap Source/Address Registers                      |
-| 0100 |LDi       |**SIA**   | Load Immediate / Swap Interrupt Address            |
-| 1100 |XMEM      |**RETI**  | Extended Memory Operations / Return from Interrupt |
+| 0100 |LDi       |***SIA\**** | Load Immediate / Swap Interrupt Address            |
+| 1100 |XMEM      |***RETI\****| Extended Memory Operations / Return from Interrupt |
 | 1000 |XOP       |CFG       | Extended Operations / Swap Configuration           |
-| 0000 |NOP       |**CC**    | No Operation / Clear Carry                         |
+| 0000 |NOP       |CC        | No Operation / Clear Carry                         |
 
 Instructions review:
 - \* : Not mandatory instructions.
-- **Bold**: Newly added / under review.
+- **Bold**: Newly added.
+- *italic*: under review.
+- *NAND, NOR, XNOR*: Due to the low opcode nature of the isa, this instructions are under consideration to be removed and replaced by a simple inverse (INV) instruction, with this it would be possible to save precious opcode to be used on the usefull SWI and not so useful MUL (but future proof) instructions.
 
 ## Instructions Review:
 - **RR/RL**: Rotate Accumulator - It will treat acc (Accumulator) as a single register and shift rotate it by "Operation mode" size. *(flags unchanged)*
@@ -138,6 +140,7 @@ Currently there are some instructions that could became part of the ISA:
 |------|------------|-------------------------------------------|
 | 0000 |IMUL*       | Integer Multiplication                    |
 | 0000 |SDI         | Send Interrupt                            |
+| 0000 |SWI         | Software Interrupt                        |
 
 ## Reference Implementation
 The reference implementation (located at "/design/misa-o_ref.sv") is not made to be performant, efficient, optimal or even synthesizable; its main purpose is to be simple to interpret while also serving as a playground to test the ISA instructions.
@@ -186,10 +189,10 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
           |---------------------------------| 
 
 ## Final Considerations
-**NEG**:Started with NEG/Negated instructions/behaviour, but was replaced with a more default behaviour (**XOP**) of only affect the next instruction, this change allowed for a better compression and a more stable behaviour, this will also help in a compiler construction.
+**NEG**:Started with NEG/Negated instructions/behaviour, but was replaced with a more default behaviour (**XOP**) of only affect the next instruction, this change allowed for a better compression and a more stable behaviour, this will also help on the compiler construction.
 
 **LK**: Link was demoted to be replaced by a more versatile "Swap Configuration", now it's possible to enable auto increment when reading/writing from/to memory with the advantage of also be able to secure a known working state for the functions.
 
 **Branches**: Planned to be based on ra0, under some consideration it was changed to immediate value. Because of the small quantity of registers this seems more reasonable, but could be changed back to utilize ra0.
 
-**Multiply**: The area/power cost of a hardware multiplier is high for this class of core, and the **base opcode map is full**. Comparable minimal CPUs also omit MUL. Software emulation (shift-add) handles 4/8/16-bit cases well — especially with *CEN* and *CC* — so the practical impact is low.
+**Multiply**: The area/power cost of a hardware multiplier is high for this class of core, and the **base opcode map is full**. Comparable minimal CPUs also omit MUL. Software emulation (shift-add) handles 4/8/16-bit cases well — especially with *CEN* and *CC* — so the practical impact is low. The idea behind having MUL instruction is to gives the minimum hope of an implementation that could run DOOM.
