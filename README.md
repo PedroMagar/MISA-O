@@ -36,10 +36,10 @@ The following table lists the architecture instructions:
 
 |Binary|Default   |Extended  |Description                                         |
 |------|----------|----------|----------------------------------------------------|
-| 0001 |AND       |*NAND*    |                                                    |
-| 0101 |OR        |*NOR*     |                                                    |
-| 1001 |XOR       |*XNOR*    |                                                    |
-| 1101 |SHL       |SHR       | Shift Left / Right                                 |
+| 0001 |AND       |XOR       | AND / XOR                                          |
+| 0101 |OR        |***INV*** | OR / Inverse                                       |
+| 1001 |SHL       |SHR       | Shift Left / Right                                 |
+| 1101 |**CC**    |***MADD\****| Clear Carry / Multiply Add                       |
 | 0011 |ADD       |SUB       | Add / Sub                                          |
 | 1011 |INC       |DEC       | Increment / Decrement                              |
 | 0111 |BEQz      |BC        | Branch if Equal Zero / Branch if Carry             |
@@ -50,16 +50,16 @@ The following table lists the architecture instructions:
 | 1110 |SS        |SA        | Swap Source/Address Registers                      |
 | 0100 |LDi       |***SIA\**** | Load Immediate / Swap Interrupt Address            |
 | 1100 |XMEM      |***RETI\****| Extended Memory Operations / Return from Interrupt |
-| 1000 |XOP       |CFG       | Extended Operations / Swap Configuration           |
-| 0000 |NOP       |CC        | No Operation / Clear Carry                         |
+| 1000 |XOP       |***SWI*** | Extended Operations / Software Interrupt           |
+| 0000 |NOP       |CFG       | No Operation / Swap Configuration                  |
 
 Instructions review:
 - \* : Not mandatory instructions.
 - **Bold**: Newly added.
 - *italic*: under review.
-- *NAND, NOR, XNOR*: Due to the low opcode nature of the isa, this instructions are under consideration to be removed and replaced by a simple inverse (INV) instruction, with this it would be possible to save precious opcode to be used on the usefull SWI and not so useful MUL (but future proof) instructions.
 
 ## Instructions Review:
+- **MADD**: Not mandatory, will add the result of rs0 times rs1 to acc (acc ← acc + rs0 * rs1).
 - **RR/RL**: Rotate Accumulator - It will treat acc (Accumulator) as a single register and shift rotate it by "Operation mode" size. *(flags unchanged)*
 - **RS/RA**: It will treat RS/RA as a stack and rotate it *(currently looks like a swap, but later on if more register where added it will truly rotate)*.
 - **JAL/JMP**: All jumps will be based on register ra0, but linking would be saved on ra1.
@@ -90,10 +90,11 @@ Instructions review:
     - If `AM=1`: `addr += (W==16 ? 2 : 1)`
     - Flags: **unchanged**.
 - **Interrupts**:
-    - **Interrupts**: *ia* holds the *Interrupt Service Routine* (ISR) page *most significant byte* (MSB). On interrupt:
+    - **Interrupts**: Not mandatory, *ia* holds the *Interrupt Service Routine* (ISR) page *most significant byte* (MSB). On interrupt:
       - The CPU **stores PC_next, CFG/FLAGS, acc, RS0/RS1, RA0/RA1** at fixed offsets in page `ia` (see layout below),
       - latches `iar ← ia`, **clears IE**, clears any pending **XOP**, and
       - **jumps to** `ia<<8 + 0x10` (the ISR entry).
+    - **SWI**: Software Interrupt, call interrupt routine.
     - **SIA**: Swap lower *acc* data (acc[7:0]) with *ia* register (ia = acc[7:0] && acc[7:0] = ia).
     - **RETI**: Restores state from the *iar* page and resumes execution.
       - Base address: **base = iar << 8**
@@ -138,9 +139,8 @@ Instructions review:
 Currently there are some instructions that could became part of the ISA:
 |Binary|Instruction |                                           |
 |------|------------|-------------------------------------------|
-| 0000 |IMUL*       | Integer Multiplication                    |
+| 0000 |CLR         | Clear                                     |
 | 0000 |SDI         | Send Interrupt                            |
-| 0000 |SWI         | Software Interrupt                        |
 
 ## Reference Implementation
 The reference implementation (located at "/design/misa-o_ref.sv") is not made to be performant, efficient, optimal or even synthesizable; its main purpose is to be simple to interpret while also serving as a playground to test the ISA instructions.
@@ -195,4 +195,4 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
 
 **Branches**: Planned to be based on ra0, under some consideration it was changed to immediate value. Because of the small quantity of registers this seems more reasonable, but could be changed back to utilize ra0.
 
-**Multiply**: The area/power cost of a hardware multiplier is high for this class of core, and the **base opcode map is full**. Comparable minimal CPUs also omit MUL. Software emulation (shift-add) handles 4/8/16-bit cases well — especially with *CEN* and *CC* — so the practical impact is low. The idea behind having MUL instruction is to gives the minimum hope of an implementation that could run DOOM.
+**Multiply**: The area/power cost of a hardware multiplier is high for this class of core, such burden is aliviated by not making it an obligatory instruction. Comparable minimal CPUs also omit MUL. Even though software emulation is possible, a proper opcode enables a more optimized core, sadly no opcode left for DIV or matrix operations.
