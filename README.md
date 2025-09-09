@@ -36,8 +36,8 @@ The following table lists the architecture instructions:
 
 |Binary|Default   |Extended  |Description                                         |
 |------|----------|----------|----------------------------------------------------|
-| 0001 |AND       |XOR       | AND / XOR                                          |
-| 0101 |OR        |***INV*** | OR / Inverse                                       |
+| 0001 |AND       |***INV*** | AND / Inverse                                      |
+| 0101 |OR        |XOR       | OR / XOR                                           |
 | 1001 |SHL       |SHR       | Shift Left / Right                                 |
 | 1101 |**CC**    |***MADD\****| Clear Carry / Multiply Add                       |
 | 0011 |ADD       |SUB       | Add / Sub                                          |
