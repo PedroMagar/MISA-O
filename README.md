@@ -50,7 +50,7 @@ The following table lists the architecture instructions:
 | 1110 |SS        |SA        | Swap Source/Address Registers                      |
 | 0100 |LDi       |***SIA\**** | Load Immediate / Swap Interrupt Address            |
 | 1100 |XMEM      |***RETI\****| Extended Memory Operations / Return from Interrupt |
-| 1000 |XOP       |***SWI*** | Extended Operations / Software Interrupt           |
+| 1000 |XOP       |***SWI\**** | Extended Operations / Software Interrupt           |
 | 0000 |NOP       |CFG       | No Operation / Swap Configuration                  |
 
 Instructions review:
