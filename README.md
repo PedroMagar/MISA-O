@@ -15,16 +15,16 @@ MISA-O is a 4-bit MISC accumulator ISA with variable-length encoding (nibble/byt
   - ra0: Active address.
   - ra1: Return address.
 - 1x8-bit cfg (Configuration) register.
-  - [7]: Reserved, hard 0.
-  - [6]: BW - Branch immediate width, default imm8.
+  - [7]: Reserved, (reads as 0; writes ignored).
+  - [6]: BW - Branch immediate width. Reset: 1 (imm8).
     -  0: imm4 (1 byte total)
     -  1: imm8 (2 bytes total)
-  - [5]: BRS - Branch relative scale, default 1-byte.
-    - 0: shift by 0, 1-byte step
-    - 1: shift by 2, 4-byte steps
-  - [4]: IE: Interrupts (0: disable / 1: enable), default disable.
-  - [3]: CEN - Carry (1: enable / 0: disable), default enable.
-  - [2]: SIGN - Signed mode (1: signed / 0: unsigned), default signed.
+  - [5]: BRS - Branch relative scale. Reset: 1 (<<2).
+    - 0: shift by 0, 1-byte step.
+    - 1: shift by 2, 4-bytes steps (Default).
+  - [4]: IE: Interrupts (0: disable / 1: enable). Reset: 0 (disable).
+  - [3]: CEN - Carry (1: enable / 0: disable). Reset: 1 (enable).
+  - [2]: SIGN - Signed mode (1: signed / 0: unsigned). Reset: 1 (signed).
   - [1:0]: W - LINK - Link Mode:
     - 2b00: UL (Unlinked) - 4-bit mode (Default).
     - 2b01: LK8 (Link 8) - 8-bit mode.
@@ -36,10 +36,10 @@ The following table lists the architecture instructions:
 
 |Binary|Default   |Extended  |Description                                         |
 |------|----------|----------|----------------------------------------------------|
-| 0001 |AND       |***INV*** | AND / Inverse                                      |
+| 0001 |AND       |**INV**   | AND / Invert                                       |
 | 0101 |OR        |XOR       | OR / XOR                                           |
 | 1001 |SHL       |SHR       | Shift Left / Right                                 |
-| 1101 |**CC**    |***MADD\****| Clear Carry / Multiply Add                       |
+| 1101 |**CC**    |**MADD\***| Clear Carry / Multiply Add                         |
 | 0011 |ADD       |SUB       | Add / Sub                                          |
 | 1011 |INC       |DEC       | Increment / Decrement                              |
 | 0111 |BEQz      |BC        | Branch if Equal Zero / Branch if Carry             |
@@ -48,29 +48,31 @@ The following table lists the architecture instructions:
 | 0110 |RR        |RL        | Rotate Accumulator (acc) Right/Left                |
 | 1010 |RS        |RA        | Rotate Source/Address Registers                    |
 | 1110 |SS        |SA        | Swap Source/Address Registers                      |
-| 0100 |LDi       |***SIA\**** | Load Immediate / Swap Interrupt Address            |
-| 1100 |XMEM      |***RETI\****| Extended Memory Operations / Return from Interrupt |
-| 1000 |XOP       |***SWI\**** | Extended Operations / Software Interrupt           |
+| 0100 |LDi       |**SIA\*** | Load Immediate / Swap Interrupt Address            |
+| 1100 |XMEM      |**RETI\***| Extended Memory Operations / Return from Interrupt |
+| 1000 |XOP       |**SWI\*** | Extended Operations / Software Interrupt           |
 | 0000 |NOP       |CFG       | No Operation / Swap Configuration                  |
 
 Instructions review:
 - \* : Not mandatory instructions.
-- **Bold**: Newly added.
-- *italic*: under review.
+- **Bold**: Newly added / under review.
 
 ## Instructions Review:
-- **MADD**: Not mandatory, will add the result of rs0 times rs1 to acc (acc ← acc + rs0 * rs1).
+- **MADD**: Not mandatory, will *add* the result of *rs0 times rs1* to *acc*.
+  - Affected by configurations flags: W = 4/8/16 from LINK; SIGN selects unsigned/signed multiplication.
+  - Product is 2W; the low W bits are added to `ACC: ACC ← ACC + (RS0 * RS1)[W-1:0]`.
+  - Flags follow ADD (C carry-out; V signed overflow if SIGN=1).
 - **RR/RL**: Rotate Accumulator - It will treat acc (Accumulator) as a single register and shift rotate it by "Operation mode" size. *(flags unchanged)*
 - **RS/RA**: It will treat RS/RA as a stack and rotate it *(currently looks like a swap, but later on if more register where added it will truly rotate)*.
 - **JAL/JMP**: All jumps will be based on register ra0, but linking would be saved on ra1.
   - **JAL**: `ra1 ← PC_next`; `PC ← ra0`
   - **JMP**: `PC ← ra0`
 - **CFG**: Swap CFG register with acc[7:0].
-- **Branches**: If the condition is true, the **PC is updated by adding a signed 8-bit offset encoded in the instruction shifted by BRS** *(PC-relative)*. **True** behaviour: **PC ← PC_next + ( sign_extend(BW ? imm8 : imm4)) << (BRS ? 2 : 0) )**;  **Otherwise**, **PC ← PC_next**. (Branches do not modify flags)
+- **Branches** (PC-relative): If the condition is true: **PC ← PC_next + ( *sign_extend*(BW ? imm8 : imm4) << (BRS ? 2 : 0) )**; Else: **PC ← PC_next**. (Branches do not modify flags).
   - **BEQz**: Branch if `acc == 0`.
   - **BC**: Branch if `Carry C == 1`.
-  - **BTST**: Tests bit `acc[idx]` where `idx = rs0[3:0]`; sets `C=bit`; `acc` not written. (Limited by link mode)
-  - **TST**: Utilizes rs0 as a mask to acc and compare (`tmp = acc & rs0`), acc not written. (Limited by link mode)
+  - **BTST**: Tests bit `acc[idx]` where `idx = rs0[3:0]`; sets `C=bit`; `acc` not written.
+  - **TST**: Utilizes **rs0** as a **mask** to **acc** and compare (`tmp = acc & rs0`); sets `C=bit`; `acc` not written. (Limited by link mode)
 - **XOP**: Executes next instruction as Extended Operation.
 - **XMEM #f**: Extended Memory Operations (opcode 1100 + 4-bit function):
   - Function:
@@ -79,15 +81,16 @@ Instructions review:
     - `f[1]`: **DIR**:  0 = +stride (increment), 1 = −stride (decrement)
     - `f[0]`: **AR**: 0=ra0, 1=ra1
   - Semantics (width W from LINK, little-endian):
+    - addr = `(AR ? ra1 : ra0)`
     - **LD**: 
-      - **LK16**: `acc ← [addr]`
+      - **LK16**: `acc ← { [addr+1], [addr] }` ; little-endian
       - **LK8**: `acc[7:0] ← [addr]`
-      - **UL**: `acc[3:0] ← [addr]`
+      - **UL**: `acc[3:0] ← [addr][3:0]`
     - **SW**:
-      - **LK16**: `[addr] ← acc[7:0]; [ra0+1] ← acc[15:8]`
+      - **LK16**: `[addr] ← acc[7:0]; [addr+1] ← acc[15:8]`
       - **LK8**: `[addr] ← acc[7:0]`
       - **UL**: `tmp ← [addr]; tmp[3:0] ← acc[3:0]; [addr] ← tmp`
-    - If `AM=1`: `addr += (W==16 ? 2 : 1)`
+    - If `AM=1`: `addr ← addr + (DIR ? −stride : +stride)`
     - Flags: **unchanged**.
 - **Interrupts**:
     - **Interrupts**: Not mandatory, *ia* holds the *Interrupt Service Routine* (ISR) page *most significant byte* (MSB). On interrupt:
@@ -109,8 +112,9 @@ Instructions review:
       - After RETI, **IE** follows the IE bit of the active **CFG** (restored or left as set by the ISR).
     - Fixed layout within the ia page:
 ```
-; Saved on interrupt entry. RETI reads from the IAR page:
-      base = ia << 8
+; IAR page:
+; Saved on interrupt entry:      base = ia  << 8
+; RETI reads/restores from page: base = iar << 8
       +0x00 : PC_next[7:0]
       +0x01 : PC_next[15:8]
       +0x02 : CFG snapshot (8-bit)
@@ -150,7 +154,7 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
 
 #### Scripts
 - misa-o_b.sh: Build script, utilized to see if the project is currently building.
-- misa-o_r.sh: Build & Run script, utilized to run the test and to see the results in GTKWAVE, there you can visualize the behaviour.
+- misa-o_r.sh: Build & Run script, utilized to run the test and to see the results in GTKWAVE, there you can visualize the behavior.
 
 #### Dependencies
 - Icarus Verilog (iverilog).
@@ -189,10 +193,10 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
           |---------------------------------| 
 
 ## Final Considerations
-**NEG**:Started with NEG/Negated instructions/behaviour, but was replaced with a more default behaviour (**XOP**) of only affect the next instruction, this change allowed for a better compression and a more stable behaviour, this will also help on the compiler construction.
+**NEG**:Started with NEG/Negated instructions/behavior, but was replaced with a more default behavior (**XOP**) of only affect the next instruction, this change allowed for a better compression and a more stable behavior, this will also help on the compiler construction.
 
 **LK**: Link was demoted to be replaced by a more versatile "Swap Configuration", now it's possible to enable auto increment when reading/writing from/to memory with the advantage of also be able to secure a known working state for the functions.
 
 **Branches**: Planned to be based on ra0, under some consideration it was changed to immediate value. Because of the small quantity of registers this seems more reasonable, but could be changed back to utilize ra0.
 
-**Multiply**: The area/power cost of a hardware multiplier is high for this class of core, such burden is aliviated by not making it an obligatory instruction. Comparable minimal CPUs also omit MUL. Even though software emulation is possible, a proper opcode enables a more optimized core, sadly no opcode left for DIV or matrix operations.
+**Multiply**: The area/power cost of a hardware multiplier is high for this class of core, such burden is alleviated by not making it an obligatory instruction. Comparable minimal CPUs also omit MUL. Even though software emulation is possible, a proper opcode enables a more optimized core, sadly no opcode left for DIV or matrix operations.
