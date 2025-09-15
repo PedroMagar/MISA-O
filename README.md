@@ -19,9 +19,9 @@ MISA-O is a 4-bit MISC accumulator ISA with variable-length encoding (nibble/byt
   - [6]: BW - Branch immediate width. Reset: 1 (imm8).
     -  0: imm4 (1 byte total)
     -  1: imm8 (2 bytes total)
-  - [5]: BRS - Branch relative scale. Reset: 1 (<<2).
-    - 0: shift by 0, 1-byte step.
-    - 1: shift by 2, 4-bytes steps (Default).
+  - [5]: BRS - Branch relative scale. Reset: 0 (<<2).
+    - 0: shift by 0, 1-byte step (Default).
+    - 1: shift by 2, 4-byte steps.
   - [4]: IE: Interrupts (0: disable / 1: enable). Reset: 0 (disable).
   - [3]: CEN - Carry (1: enable / 0: disable). Reset: 1 (enable).
   - [2]: SIGN - Signed mode (1: signed / 0: unsigned). Reset: 1 (signed).
@@ -62,7 +62,8 @@ Instructions review:
   - Affected by configurations flags: W = 4/8/16 from LINK; SIGN selects unsigned/signed multiplication.
   - Product is 2W; the low W bits are added to `ACC: ACC ← ACC + (RS0 * RS1)[W-1:0]`.
   - Flags follow ADD (C carry-out; V signed overflow if SIGN=1).
-- **RR/RL**: Rotate Accumulator - It will treat acc (Accumulator) as a single register and shift rotate it by "Operation mode" size. *(flags unchanged)*
+- **INV**: `ACC ← ~ACC` within the active width W (4/8/16); *flags unchanged*.
+- **RR/RL**: Rotate Accumulator - It will treat acc (Accumulator) as a single register and shift rotate it by "Operation mode" size; *flags unchanged*.
 - **RS/RA**: It will treat RS/RA as a stack and rotate it *(currently looks like a swap, but later on if more register where added it will truly rotate)*.
 - **JAL/JMP**: All jumps will be based on register ra0, but linking would be saved on ra1.
   - **JAL**: `ra1 ← PC_next`; `PC ← ra0`
@@ -93,7 +94,7 @@ Instructions review:
     - If `AM=1`: `addr ← addr + (DIR ? −stride : +stride)`
     - Flags: **unchanged**.
 - **Interrupts**:
-    - **Interrupts**: Not mandatory, *ia* holds the *Interrupt Service Routine* (ISR) page *most significant byte* (MSB). On interrupt:
+    - **Interrupts**: Not mandatory, *ia* holds the *Interrupt Service Routine* (ISR) page *Most Significant Byte* (MSB). On interrupt:
       - The CPU **stores PC_next, CFG/FLAGS, acc, RS0/RS1, RA0/RA1** at fixed offsets in page `ia` (see layout below),
       - latches `iar ← ia`, **clears IE**, clears any pending **XOP**, and
       - **jumps to** `ia<<8 + 0x10` (the ISR entry).
