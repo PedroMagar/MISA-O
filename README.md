@@ -19,9 +19,9 @@ MISA-O is a 4-bit MISC accumulator ISA with variable-length encoding (nibble/byt
   - [6]: BW - Branch immediate width. Reset: 1 (imm8).
     -  0: imm4 (1 byte total)
     -  1: imm8 (2 bytes total)
-  - [5]: BRS - Branch relative scale. Reset: 0 (<<2).
+  - [5]: BRS - Branch relative scale. Reset: 0 (<<0).
     - 0: shift by 0, 1-byte step (Default).
-    - 1: shift by 2, 4-byte steps.
+    - 1: shift by 2, 4-byte step.
   - [4]: IE: Interrupts (0: disable / 1: enable). Reset: 0 (disable).
   - [3]: CEN - Carry (1: enable / 0: disable). Reset: 1 (enable).
   - [2]: SIGN - Signed mode (1: signed / 0: unsigned). Reset: 1 (signed).
@@ -36,10 +36,10 @@ The following table lists the architecture instructions:
 
 |Binary|Default   |Extended  |Description                                         |
 |------|----------|----------|----------------------------------------------------|
-| 0001 |AND       |**INV**   | AND / Invert                                       |
-| 0101 |OR        |XOR       | OR / XOR                                           |
-| 1001 |SHL       |SHR       | Shift Left / Right                                 |
-| 1101 |**CC**    |**MADD\***| Clear Carry / Multiply Add                         |
+| 0001 |CC        |CFG       | Clear Carry / Swap Configuration                   |
+| 0101 |AND       |INV       | AND / Invert                                       |
+| 1001 |OR        |XOR       | OR / XOR                                           |
+| 1101 |SHL       |SHR       | Shift Left / Right                                 |
 | 0011 |ADD       |SUB       | Add / Sub                                          |
 | 1011 |INC       |DEC       | Increment / Decrement                              |
 | 0111 |BEQz      |BC        | Branch if Equal Zero / Branch if Carry             |
@@ -51,14 +51,16 @@ The following table lists the architecture instructions:
 | 0100 |LDi       |**SIA\*** | Load Immediate / Swap Interrupt Address            |
 | 1100 |XMEM      |**RETI\***| Extended Memory Operations / Return from Interrupt |
 | 1000 |XOP       |**SWI\*** | Extended Operations / Software Interrupt           |
-| 0000 |NOP       |CFG       | No Operation / Swap Configuration                  |
+| 0000 |NOP       |**MAD\*** | No Operation / Multiply Add                        |
 
 Instructions review:
 - \* : Not mandatory instructions.
 - **Bold**: Newly added / under review.
+- **WFI**: Wait-For-Interrupt is the most prominent candidate to be added to the ISA, replacing MAD. It enables a complete interrupt-driven flow while keeping consistency (all non-mandatory instructions remain interrupt-related).
 
 ## Instructions Review:
-- **MADD**: Not mandatory, will *add* the result of *rs0 times rs1* to *acc*.
+- **Not Mandatory / Custom Instructions**: Opcodes marked “not mandatory” may be used for custom extensions by implementers. Code that uses them is not compatible with baseline MISA-O cores.
+- **MAD** (integer, non-fused): Not mandatory, will *add* the result of *rs0 times rs1* to *acc* (can be replaced by a desired instruction).
   - Affected by configurations flags: W = 4/8/16 from LINK; SIGN selects unsigned/signed multiplication.
   - Product is 2W; the low W bits are added to `ACC: ACC ← ACC + (RS0 * RS1)[W-1:0]`.
   - Flags follow ADD (C carry-out; V signed overflow if SIGN=1).
@@ -83,8 +85,9 @@ Instructions review:
     - `f[0]`: **AR**: 0=ra0, 1=ra1
   - Semantics (width W from LINK, little-endian):
     - addr = `(AR ? ra1 : ra0)`
+    - stride = `(W == 16 ? 2 : 1) ; bytes (UL & LK8: 1B; LK16: 2B)`
     - **LD**: 
-      - **LK16**: `acc ← { [addr+1], [addr] }` ; little-endian
+      - **LK16**: `acc ← { [addr+1], [addr] } ; little-endian`
       - **LK8**: `acc[7:0] ← [addr]`
       - **UL**: `acc[3:0] ← [addr][3:0]`
     - **SW**:
@@ -98,7 +101,7 @@ Instructions review:
       - The CPU **stores PC_next, CFG/FLAGS, acc, RS0/RS1, RA0/RA1** at fixed offsets in page `ia` (see layout below),
       - latches `iar ← ia`, **clears IE**, clears any pending **XOP**, and
       - **jumps to** `ia<<8 + 0x10` (the ISR entry).
-    - **SWI**: Software Interrupt, call interrupt routine.
+    - **SWI**: Triggers a software interrupt; flow identical to external IRQ: autosave on ia page, saves ia page location (`iar←ia`), disable interrupt (`IE←0`) and jump to `ia<<8 + 0x10`.
     - **SIA**: Swap lower *acc* data (acc[7:0]) with *ia* register (ia = acc[7:0] && acc[7:0] = ia).
     - **RETI**: Restores state from the *iar* page and resumes execution.
       - Base address: **base = iar << 8**
@@ -113,7 +116,7 @@ Instructions review:
       - After RETI, **IE** follows the IE bit of the active **CFG** (restored or left as set by the ISR).
     - Fixed layout within the ia page:
 ```
-; IAR page:
+; IA page:
 ; Saved on interrupt entry:      base = ia  << 8
 ; RETI reads/restores from page: base = iar << 8
       +0x00 : PC_next[7:0]
@@ -146,6 +149,7 @@ Currently there are some instructions that could became part of the ISA:
 |------|------------|-------------------------------------------|
 | 0000 |CLR         | Clear                                     |
 | 0000 |SDI         | Send Interrupt                            |
+| 0000 |WFI         | Wait-For-Interrupt                        |
 
 ## Reference Implementation
 The reference implementation (located at "/design/misa-o_ref.sv") is not made to be performant, efficient, optimal or even synthesizable; its main purpose is to be simple to interpret while also serving as a playground to test the ISA instructions.
@@ -194,7 +198,7 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
           |---------------------------------| 
 
 ## Final Considerations
-**NEG**:Started with NEG/Negated instructions/behavior, but was replaced with a more default behavior (**XOP**) of only affect the next instruction, this change allowed for a better compression and a more stable behavior, this will also help on the compiler construction.
+**NEG**:Started with NEG/Negated instructions/behavior, but was replaced with a more default behavior (**XOP**) that only affect the next instruction, this change allowed for a better compression and a more stable behavior, this will also help on the compiler construction.
 
 **LK**: Link was demoted to be replaced by a more versatile "Swap Configuration", now it's possible to enable auto increment when reading/writing from/to memory with the advantage of also be able to secure a known working state for the functions.
 
