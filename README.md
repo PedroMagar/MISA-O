@@ -34,24 +34,24 @@ MISA-O is a 4-bit MISC accumulator ISA with variable-length encoding (nibble/byt
 ## Instructions
 The following table lists the architecture instructions:
 
-|Binary|Default   |Extended  |Description                                         |
-|------|----------|----------|----------------------------------------------------|
-| 0001 |CC        |CFG       | Clear Carry / Swap Configuration                   |
-| 0101 |AND       |INV       | AND / Invert                                       |
-| 1001 |OR        |XOR       | OR / XOR                                           |
-| 1101 |SHL       |SHR       | Shift Left / Right                                 |
-| 0011 |ADD       |SUB       | Add / Sub                                          |
-| 1011 |INC       |DEC       | Increment / Decrement                              |
-| 0111 |BEQz      |BC        | Branch if Equal Zero / Branch if Carry             |
-| 1111 |BTST      |TST       | Bit Test / Test                                    |
-| 0010 |JAL       |JMP       | Jump and Link / Jump                               |
-| 0110 |RR        |RL        | Rotate Accumulator (acc) Right/Left                |
-| 1010 |RS        |RA        | Rotate Source/Address Registers                    |
-| 1110 |SS        |SA        | Swap Source/Address Registers                      |
-| 0100 |LDi       |**SIA\*** | Load Immediate / Swap Interrupt Address            |
-| 1100 |XMEM      |**RETI\***| Extended Memory Operations / Return from Interrupt |
-| 1000 |XOP       |**SWI\*** | Extended Operations / Software Interrupt           |
-| 0000 |NOP       |**MAD\*** | No Operation / Multiply Add                        |
+|Binary    |Default   |Extended  |Description                                         |
+|----------|----------|----------|----------------------------------------------------|
+| 000**1** |CC        |CFG       | Clear Carry / Swap Configuration                   |
+| 010**1** |AND       |INV       | AND / Invert                                       |
+| 100**1** |OR        |XOR       | OR / XOR                                           |
+| 110**1** |SHL       |SHR       | Shift Left / Right                                 |
+| 001**1** |ADD       |SUB       | Add / Sub                                          |
+| 101**1** |INC       |DEC       | Increment / Decrement                              |
+| 011**1** |BEQz      |BC        | Branch if Equal Zero / Branch if Carry             |
+| 111**1** |BTST      |TST       | Bit Test / Test                                    |
+| 00**10** |JAL       |JMP       | Jump and Link / Jump                               |
+| 01**10** |RR        |RL        | Rotate Accumulator (acc) Right/Left                |
+| 10**10** |RS        |RA        | Rotate Source/Address Registers                    |
+| 11**10** |SS        |SA        | Swap Source/Address Registers                      |
+| 0**100** |LDi       |**SIA\*** | Load Immediate / Swap Interrupt Address            |
+| 1**100** |XMEM      |**RETI\***| Extended Memory Operations / Return from Interrupt |
+| **1000** |XOP       |**SWI\*** | Extended Operations / Software Interrupt           |
+| **0000** |NOP       |**MAD\*** | No Operation / Multiply Add                        |
 
 Instructions review:
 - \* : Not mandatory instructions.
@@ -167,35 +167,35 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
 
 ## Registers Overview
 
-          |-----------------| 
-      cfg | 0 0 0 0 0 0 0 0 | 
-          |-----------------| 
+          |-------------------| 
+      cfg | 0 0 0 0   0 0 0 0 | 
+          |-------------------| 
 
-          |-----------------| 
-       ia | 0 0 0 0 0 0 0 0 | 
-          |-----------------| 
-      iar | 0 0 0 0 0 0 0 0 | 
-          |-----------------| 
+          |-------------------| 
+       ia | 0 0 0 0   0 0 0 0 | 
+          |-------------------| 
+      iar | 0 0 0 0   0 0 0 0 | 
+          |-------------------| 
 
-          |---------------------------------| 
-       pc | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
-          |---------------------------------| 
+          |---------------------------------------| 
+       pc | 0 0 0 0   0 0 0 0   0 0 0 0   0 0 0 0 | 
+          |---------------------------------------| 
 
-          |---------------------------------| 
-      ra1 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
-          |---------------------------------| 
-      ra0 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
-          |---------------------------------| 
+          |---------------------------------------| 
+      ra1 | 0 0 0 0   0 0 0 0   0 0 0 0   0 0 0 0 | 
+          |---------------------------------------| 
+      ra0 | 0 0 0 0   0 0 0 0   0 0 0 0   0 0 0 0 | 
+          |---------------------------------------| 
 
-          |---------------------------------| 
-      acc | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 | 
-          |---------------------------------|
+          |--- r3 ------ r2 ------ r1 ------ r0 --| 
+      acc | 0 0 0 0 | 0 0 0 0 | 0 0 0 0 | 0 0 0 0 | 
+          |---------------------------------------|
 
-          |---------------------------------|
-      rs0 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 |
-          |---------------------------------|
-      rs1 | 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 |
-          |---------------------------------| 
+          |---------------------------------------|
+      rs0 | 0 0 0 0   0 0 0 0   0 0 0 0   0 0 0 0 |
+          |---------------------------------------|
+      rs1 | 0 0 0 0   0 0 0 0   0 0 0 0   0 0 0 0 |
+          |---------------------------------------| 
 
 ## Final Considerations
 **NEG**:Started with NEG/Negated instructions/behavior, but was replaced with a more default behavior (**XOP**) that only affect the next instruction, this change allowed for a better compression and a more stable behavior, this will also help on the compiler construction.
