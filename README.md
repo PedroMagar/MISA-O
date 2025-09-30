@@ -45,18 +45,19 @@ The following table lists the architecture instructions:
 | 011**1** |BEQz      |BC        | Branch if Equal Zero / Branch if Carry             |
 | 111**1** |BTST      |TST       | Bit Test / Test                                    |
 | 00**10** |JAL       |JMP       | Jump and Link / Jump                               |
-| 01**10** |RR        |RL        | Rotate Accumulator (acc) Right/Left                |
-| 10**10** |RS        |RA        | Rotate Source/Address Registers                    |
-| 11**10** |SS        |SA        | Swap Source/Address Registers                      |
-| 0**100** |LDi       |**SIA\*** | Load Immediate / Swap Interrupt Address            |
-| 1**100** |XMEM      |**RETI\***| Extended Memory Operations / Return from Interrupt |
-| **1000** |XOP       |**SWI\*** | Extended Operations / Software Interrupt           |
-| **0000** |NOP       |**MAD\*** | No Operation / Multiply Add                        |
+| 01**10** |RACC      |**RRS**   | Rotate Accumulator/ Rotate Register Source 0       |
+| 10**10** |RS        |RA        | Rotate Stack Registers Source/Address              |
+| 11**10** |SS        |SA        | Swap Registers Source/Address                      |
+| 0**100** |LDi       |SIA\*     | Load Immediate / Swap Interrupt Address            |
+| 1**100** |XMEM      |RETI\*    | Extended Memory Operations / Return from Interrupt |
+| **1000** |XOP       |SWI\*     | Extended Operations / Software Interrupt           |
+| **0000** |NOP       |**WFI\*** | No Operation / Wait-For-Interrupt                  |
 
 Instructions review:
 - \* : Not mandatory instructions.
 - **Bold**: Newly added / under review.
-- **WFI**: Wait-For-Interrupt is the most prominent candidate to be added to the ISA, replacing MAD. It enables a complete interrupt-driven flow while keeping consistency (all non-mandatory instructions remain interrupt-related).
+- **WFI**: Wait-For-Interrupt was promoted to keep consistency on all non-mandatory instructions, the **MAD** instruction that it replaced could be part of a new extension (CFG reserved = 1) together with DIV and others math operations.
+- **RRS**: Even though rotate rs0 only saves one instruction (from: SS → RACC → SS ; to: XOP → RRS), it was chosen to save a little bit of power from data migration to do so.
 
 ## Instructions Review:
 - **Not Mandatory / Custom Instructions**: Opcodes marked “not mandatory” may be used for custom extensions by implementers. Code that uses them is not compatible with baseline MISA-O cores.
@@ -65,7 +66,8 @@ Instructions review:
   - Product is 2W; the low W bits are added to `ACC: ACC ← ACC + (RS0 * RS1)[W-1:0]`.
   - Flags follow ADD (C carry-out; V signed overflow if SIGN=1).
 - **INV**: `ACC ← ~ACC` within the active width W (4/8/16); *flags unchanged*.
-- **RR/RL**: Rotate Accumulator - It will treat acc (Accumulator) as a single register and shift rotate it by "Operation mode" size; *flags unchanged*.
+- **RACC**: Rotate Accumulator - It will treat acc (Accumulator) as a single register and shift rotate it by "Operation mode" size to the right.
+- **RRS**: Rotate Register Source - It will treat rs0 as a single register and shift rotate it by "Operation mode" size to the right.
 - **RS/RA**: It will treat RS/RA as a stack and rotate it *(currently looks like a swap, but later on if more register where added it will truly rotate)*.
 - **JAL/JMP**: All jumps will be based on register ra0, but linking would be saved on ra1.
   - **JAL**: `ra1 ← PC_next`; `PC ← ra0`
@@ -101,9 +103,10 @@ Instructions review:
       - The CPU **stores PC_next, CFG/FLAGS, acc, RS0/RS1, RA0/RA1** at fixed offsets in page `ia` (see layout below),
       - latches `iar ← ia`, **clears IE**, clears any pending **XOP**, and
       - **jumps to** `ia<<8 + 0x10` (the ISR entry).
-    - **SWI**: Triggers a software interrupt; flow identical to external IRQ: autosave on ia page, saves ia page location (`iar←ia`), disable interrupt (`IE←0`) and jump to `ia<<8 + 0x10`.
-    - **SIA**: Swap lower *acc* data (acc[7:0]) with *ia* register (ia = acc[7:0] && acc[7:0] = ia).
-    - **RETI**: Restores state from the *iar* page and resumes execution.
+    - **WFI\***: Wait-For-Interrupt makes the processor sleeps until an interrupt sign is received.
+    - **SWI\***: Triggers a software interrupt; flow identical to external IRQ: autosave on ia page, saves ia page location (`iar←ia`), disable interrupt (`IE←0`) and jump to `ia<<8 + 0x10`.
+    - **SIA\***: Swap lower *acc* data (acc[7:0]) with *ia* register (ia = acc[7:0] && acc[7:0] = ia).
+    - **RETI\***: Restores state from the *iar* page and resumes execution.
       - Base address: **base = iar << 8**
       - Hardware restores:
         - **PC** ← [base+0x00..0x01]        ; PC_next snapshot
@@ -204,4 +207,4 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
 
 **Branches**: Planned to be based on ra0, under some consideration it was changed to immediate value. Because of the small quantity of registers this seems more reasonable, but could be changed back to utilize ra0.
 
-**Multiply**: The area/power cost of a hardware multiplier is high for this class of core, such burden is alleviated by not making it an obligatory instruction. Comparable minimal CPUs also omit MUL. Even though software emulation is possible, a proper opcode enables a more optimized core, sadly no opcode left for DIV or matrix operations.
+**Multiply**: The area/power cost of a hardware multiplier is high for this class of core, and the **base opcode map is full**. Comparable minimal CPUs also omit MUL. Software emulation (shift-add) handles 4/8/16-bit cases well — especially with *CEN* and *CC* — so the practical impact is low. But there is a plan to create an extension (CFG reserved = 1) that will replace non-mandatory instructions by new ones, like **MAD**, DIV, Vector MAD or other maths operations. The idea behind having MUL instruction is to gives the minimum hope of an implementation that could run DOOM.
