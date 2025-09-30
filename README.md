@@ -66,8 +66,7 @@ Instructions review:
   - Product is 2W; the low W bits are added to `ACC: ACC ← ACC + (RS0 * RS1)[W-1:0]`.
   - Flags follow ADD (C carry-out; V signed overflow if SIGN=1).
 - **INV**: `ACC ← ~ACC` within the active width W (4/8/16); *flags unchanged*.
-- **RACC**: Rotate Accumulator - It will treat acc (Accumulator) as a single register and shift rotate it by "Operation mode" size to the right.
-- **RRS**: Rotate Register Source - It will treat rs0 as a single register and shift rotate it by "Operation mode" size to the right.
+- **RACC/RRS**: Rotate Accumulator / Register Source - It will treat acc/rs0 as a single register and shift rotate it by "Operation mode" size to the right; In LK16 mode, this instruction has no effect (NOP).
 - **RS/RA**: It will treat RS/RA as a stack and rotate it *(currently looks like a swap, but later on if more register where added it will truly rotate)*.
 - **JAL/JMP**: All jumps will be based on register ra0, but linking would be saved on ra1.
   - **JAL**: `ra1 ← PC_next`; `PC ← ra0`
@@ -86,8 +85,8 @@ Instructions review:
     - `f[1]`: **DIR**:  0 = +stride (increment), 1 = −stride (decrement)
     - `f[0]`: **AR**: 0=ra0, 1=ra1
   - Semantics (width W from LINK, little-endian):
-    - addr = `(AR ? ra1 : ra0)`
-    - stride = `(W == 16 ? 2 : 1) ; bytes (UL & LK8: 1B; LK16: 2B)`
+    - `addr` = `(AR ? ra1 : ra0) ; alias of the selected register`
+    - `stride` = `(W == 16 ? 2 : 1) ; bytes (UL & LK8: 1B; LK16: 2B)`
     - **LD**: 
       - **LK16**: `acc ← { [addr+1], [addr] } ; little-endian`
       - **LK8**: `acc[7:0] ← [addr]`
@@ -103,8 +102,8 @@ Instructions review:
       - The CPU **stores PC_next, CFG/FLAGS, acc, RS0/RS1, RA0/RA1** at fixed offsets in page `ia` (see layout below),
       - latches `iar ← ia`, **clears IE**, clears any pending **XOP**, and
       - **jumps to** `ia<<8 + 0x10` (the ISR entry).
-    - **WFI\***: Wait-For-Interrupt makes the processor sleeps until an interrupt sign is received.
-    - **SWI\***: Triggers a software interrupt; flow identical to external IRQ: autosave on ia page, saves ia page location (`iar←ia`), disable interrupt (`IE←0`) and jump to `ia<<8 + 0x10`.
+    - **WFI\***: Wait-For-Interrupt makes the processor sleep until an interrupt sign is received.
+    - **SWI\***: Triggers a software interrupt; flow identical to an external IRQ: autosave on the ia page, latches `iar←ia`, clears IE (`IE←0`) and jumps to `ia<<8 + 0x10`.
     - **SIA\***: Swap lower *acc* data (acc[7:0]) with *ia* register (ia = acc[7:0] && acc[7:0] = ia).
     - **RETI\***: Restores state from the *iar* page and resumes execution.
       - Base address: **base = iar << 8**
@@ -201,10 +200,10 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
           |---------------------------------------| 
 
 ## Final Considerations
-**NEG**:Started with NEG/Negated instructions/behavior, but was replaced with a more default behavior (**XOP**) that only affect the next instruction, this change allowed for a better compression and a more stable behavior, this will also help on the compiler construction.
+**NEG**:Started with NEG/Negated instructions/behavior, but was replaced with a more default behavior (**XOP**) that only affects the next instruction, this change allowed for a better compression and a more stable behavior, this will also help on the compiler construction.
 
-**LK**: Link was demoted to be replaced by a more versatile "Swap Configuration", now it's possible to enable auto increment when reading/writing from/to memory with the advantage of also be able to secure a known working state for the functions.
+**LK**: Link was demoted to be replaced by a more versatile "Swap Configuration", now it's possible to enable auto-increment when reading/writing from/to memory with the advantage of also be able to secure a known working state for the functions.
 
 **Branches**: Planned to be based on ra0, under some consideration it was changed to immediate value. Because of the small quantity of registers this seems more reasonable, but could be changed back to utilize ra0.
 
-**Multiply**: The area/power cost of a hardware multiplier is high for this class of core, and the **base opcode map is full**. Comparable minimal CPUs also omit MUL. Software emulation (shift-add) handles 4/8/16-bit cases well — especially with *CEN* and *CC* — so the practical impact is low. But there is a plan to create an extension (CFG reserved = 1) that will replace non-mandatory instructions by new ones, like **MAD**, DIV, Vector MAD or other maths operations. The idea behind having MUL instruction is to gives the minimum hope of an implementation that could run DOOM.
+**Multiply**: The area/power cost of a hardware multiplier is high for this class of core, and the **base opcode map is full**. Comparable minimal CPUs also omit MUL. Software emulation (shift-add) handles 4/8/16-bit cases well — especially with *CEN* and *CC* — so the practical impact is low. But there is a plan to create an extension (CFG reserved = 1) that will replace non-mandatory instructions by new ones, like **MAD**, DIV, Vector MAD or other arithmetic operations. The idea behind having MUL instruction is to keep open the possibility of an implementation that could run DOOM.
