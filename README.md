@@ -17,8 +17,8 @@ MISA-O is a 4-bit MISC accumulator ISA with variable-length encoding (nibble/byt
 - 1x8-bit cfg (Configuration) register.
   - [7]: Reserved, (reads as 0; writes ignored).
   - [6]: BW - Branch immediate width. Reset: 1 (imm8).
-    -  0: imm4 (1 byte total)
-    -  1: imm8 (2 bytes total)
+    -  0: imm4 (4-bit total)
+    -  1: imm8 (8-bit total)
   - [5]: BRS - Branch relative scale. Reset: 0 (<<0).
     - 0: shift by 0, 1-byte step (Default).
     - 1: shift by 2, 4-byte step.
@@ -47,36 +47,33 @@ The following table lists the architecture instructions:
 | 00**10** |JAL       |JMP       | Jump and Link / Jump                               |
 | 01**10** |RACC      |**RRS**   | Rotate Accumulator/ Rotate Register Source 0       |
 | 10**10** |RS        |RA        | Rotate Stack Registers Source/Address              |
-| 11**10** |SS        |SA        | Swap Registers Source/Address                      |
+| 11**10** |**SS**    |**SA**    | Swap Registers Source/Address                      |
 | 0**100** |LDi       |SIA\*     | Load Immediate / Swap Interrupt Address            |
 | 1**100** |XMEM      |RETI\*    | Extended Memory Operations / Return from Interrupt |
 | **1000** |XOP       |SWI\*     | Extended Operations / Software Interrupt           |
 | **0000** |NOP       |**WFI\*** | No Operation / Wait-For-Interrupt                  |
 
-Instructions review:
+Notes:
 - \* : Not mandatory instructions.
 - **Bold**: Newly added / under review.
 - **WFI**: Wait-For-Interrupt was promoted to keep consistency on all non-mandatory instructions, the **MAD** instruction that it replaced could be part of a new extension (CFG reserved = 1) together with DIV and others math operations.
-- **RRS**: Even though rotate rs0 only saves one instruction (from: SS → RACC → SS ; to: XOP → RRS), it was chosen to save a little bit of power from data migration to do so.
+- **RRS**: Even though rotate rs0 only saves one instruction (from: SS → RACC → SS ; to: XOP → RRS), it was chosen to save a little bit of power from data migration to do so. Also, with this flexibility, now is under consideration to change SS/SA to swap only active width W instead of full register.
 
 ## Instructions Review:
 - **Not Mandatory / Custom Instructions**: Opcodes marked “not mandatory” may be used for custom extensions by implementers. Code that uses them is not compatible with baseline MISA-O cores.
-- **MAD** (integer, non-fused): Not mandatory, will *add* the result of *rs0 times rs1* to *acc* (can be replaced by a desired instruction).
-  - Affected by configurations flags: W = 4/8/16 from LINK; SIGN selects unsigned/signed multiplication.
-  - Product is 2W; the low W bits are added to `ACC: ACC ← ACC + (RS0 * RS1)[W-1:0]`.
-  - Flags follow ADD (C carry-out; V signed overflow if SIGN=1).
 - **INV**: `ACC ← ~ACC` within the active width W (4/8/16); *flags unchanged*.
-- **RACC/RRS**: Rotate Accumulator / Register Source - It will treat acc/rs0 as a single register and shift rotate it by "Operation mode" size to the right; In LK16 mode, this instruction has no effect (NOP).
+- **RACC/RRS**: Rotate Accumulator / Register Source - It will treat ACC/RS0 as a single register and shift rotate it by "Operation mode" size to the right; In LK16 mode, this instruction has no effect (NOP).
 - **RS/RA**: It will treat RS/RA as a stack and rotate it *(currently looks like a swap, but later on if more register where added it will truly rotate)*.
+- **SS/SA**:  Swap **ACC** *with* **RS0/RA0** (full 16-bit), regardless of W: `ACC ↔ RS0/RA0`.
 - **JAL/JMP**: All jumps will be based on register ra0, but linking would be saved on ra1.
   - **JAL**: `ra1 ← PC_next`; `PC ← ra0`
   - **JMP**: `PC ← ra0`
 - **CFG**: Swap CFG register with acc[7:0].
-- **Branches** (PC-relative): If the condition is true: **PC ← PC_next + ( *sign_extend*(BW ? imm8 : imm4) << (BRS ? 2 : 0) )**; Else: **PC ← PC_next**. (Branches do not modify flags).
-  - **BEQz**: Branch if `acc == 0`.
-  - **BC**: Branch if `Carry C == 1`.
-  - **BTST**: Tests bit `acc[idx]` where `idx = rs0[3:0]`; sets `C=bit`; `acc` not written.
-  - **TST**: Utilizes **rs0** as a **mask** to **acc** and compare (`tmp = acc & rs0`); sets `C=bit`; `acc` not written. (Limited by link mode)
+- **Branches** (PC-relative): If the condition is true: **PC ← PC_next + ( *sign_extend*(BW ? imm8 : imm4) << (BRS ? 2 : 0) )**; Else: **PC ← PC_next**; *flags unchanged*.
+  - **BEQz #imm**: Branch if `acc == 0`.
+  - **BC   #imm**: Branch if `Carry C == 1`.
+  - **BTST #imm**: Tests bit `acc[idx]` where `idx = rs0[3:0]`; sets `C=bit`; `acc` not written.
+  - **TST  #imm**: Utilizes **rs0** as a **mask** to **acc** and compare (`tmp = acc & rs0`); sets `C=bit`; `acc` not written. (Limited by link mode)
 - **XOP**: Executes next instruction as Extended Operation.
 - **XMEM #f**: Extended Memory Operations (opcode 1100 + 4-bit function):
   - Function:
