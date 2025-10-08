@@ -36,7 +36,7 @@ The following table lists the architecture instructions:
 
 |Binary    |Default   |Extended  |Description                                         |
 |----------|----------|----------|----------------------------------------------------|
-| 000**1** |CC        |CFG       | Clear Carry / Swap Configuration                   |
+| 000**1** |CC        |**CFG**   | Clear Carry / Swap Configuration                   |
 | 010**1** |AND       |INV       | AND / Invert                                       |
 | 100**1** |OR        |XOR       | OR / XOR                                           |
 | 110**1** |SHL       |SHR       | Shift Left / Right                                 |
@@ -46,8 +46,8 @@ The following table lists the architecture instructions:
 | 111**1** |BTST      |TST       | Bit Test / Test                                    |
 | 00**10** |JAL       |JMP       | Jump and Link / Jump                               |
 | 01**10** |RACC      |**RRS**   | Rotate Accumulator/ Rotate Register Source 0       |
-| 10**10** |RS        |RA        | Rotate Stack Registers Source/Address              |
-| 11**10** |**SS**    |**SA**    | Swap Registers Source/Address                      |
+| 10**10** |RSS       |RSA       | Rotate Stack Source/Address                        |
+| 11**10** |**SS**    |**SA**    | Swap Accumulator with Source/Address               |
 | 0**100** |LDi       |SIA\*     | Load Immediate / Swap Interrupt Address            |
 | 1**100** |XMEM      |RETI\*    | Extended Memory Operations / Return from Interrupt |
 | **1000** |XOP       |SWI\*     | Extended Operations / Software Interrupt           |
@@ -57,13 +57,15 @@ Notes:
 - \* : Not mandatory instructions.
 - **Bold**: Newly added / under review.
 - **WFI**: Wait-For-Interrupt was promoted to keep consistency on all non-mandatory instructions, the **MAD** instruction that it replaced could be part of a new extension (CFG reserved = 1) together with DIV and others math operations.
-- **RRS**: Even though rotate rs0 only saves one instruction (from: SS → RACC → SS ; to: XOP → RRS), it was chosen to save a little bit of power from data migration to do so. Also, with this flexibility, now is under consideration to change SS/SA to swap only active width W instead of full register.
+- **RRS**: Even though rotate rs0 only saves one instruction (from: SS → RACC → SS ; to: XOP → RRS), it was chosen to save a little bit of power from data migration to do so.
+- **SS/SA**: Due to *RRS* instruction, now is under consideration to change **SS/SA** to swap only active width W instead of full register.
+- **CFG**: Can be changed to load configuration from immediate (imm) instead of a swap.
 
 ## Instructions Review:
 - **Not Mandatory / Custom Instructions**: Opcodes marked “not mandatory” may be used for custom extensions by implementers. Code that uses them is not compatible with baseline MISA-O cores.
 - **INV**: `ACC ← ~ACC` within the active width W (4/8/16); *flags unchanged*.
 - **RACC/RRS**: Rotate Accumulator / Register Source - It will treat ACC/RS0 as a single register and shift rotate it by "Operation mode" size to the right; In LK16 mode, this instruction has no effect (NOP).
-- **RS/RA**: It will treat RS/RA as a stack and rotate it *(currently looks like a swap, but later on if more register where added it will truly rotate)*.
+- **RSS/RSA**: It will treat RS/RA as a stack and rotate it *(currently looks like a swap, but later on if more register where added it will truly rotate)*.
 - **SS/SA**:  Swap **ACC** *with* **RS0/RA0** (full 16-bit), regardless of W: `ACC ↔ RS0/RA0`.
 - **JAL/JMP**: All jumps will be based on register ra0, but linking would be saved on ra1.
   - **JAL**: `ra1 ← PC_next`; `PC ← ra0`
@@ -197,7 +199,7 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
           |---------------------------------------| 
 
 ## Final Considerations
-**NEG**:Started with NEG/Negated instructions/behavior, but was replaced with a more default behavior (**XOP**) that only affects the next instruction, this change allowed for a better compression and a more stable behavior, this will also help on the compiler construction.
+**NEG**: Started with NEG/Negated instructions/behavior, but was replaced with a more default behavior (**XOP**) that only affects the next instruction, this change allowed for a better compression and a more stable behavior, this will also help on the compiler construction.
 
 **LK**: Link was demoted to be replaced by a more versatile "Swap Configuration", now it's possible to enable auto-increment when reading/writing from/to memory with the advantage of also be able to secure a known working state for the functions.
 
