@@ -3,7 +3,10 @@
 >The specification is under review...
 
 ## Architecture
-MISA-O is a 4-bit MISC accumulator ISA with variable-length encoding (nibble/byte immediates) and an XOP prefix for extensions. Memory is accessed via a single XMEM class (load/store, optional post-inc). The architecture consists of one program counter register, four 4-bit accumulator registers, two 16-bit source registers and two 16-bit memory address registers. Accumulator registers can be linked to work as 2x8-bit or 1x16-bit besides the original 4x4-bit mode, while active source will always provide values accordingly with accumulator size. Logic operations will primarily be on accumulator register and store the result in itself, while memory operation will use active memory address register as address. The accumulator register can be rotated Left or right in sets (like operation Shift rotate left/right by the active width (W)).
+MISA-O is a compact 4-bit MISC accumulator ISA featuring variable-length encoding (nibble or byte immediates) and an **XOP** prefix for extensions.
+It uses a unified **XMEM** class for memory access (load/store with optional post-increment).
+The architecture includes one program counter, four 4-bit accumulators, two 16-bit source registers, and two 16-bit address registers.
+Accumulators can be linked into wider configurations (2×8-bit or 1×16-bit), while logic and arithmetic operations act primarily on the active accumulator.
 
 ### Characteristics:
 - 1x16-bit pc (Program Counter) register.
@@ -30,6 +33,18 @@ MISA-O is a 4-bit MISC accumulator ISA with variable-length encoding (nibble/byt
     - 2b01: LK8 (Link 8) - 8-bit mode.
     - 2b10: LK16 (Link 16) - 16-bit mode.
     - 2b11: Reserved - Future use.
+
+#### CFG Table:
+| Bit | Name     | Default | Description                                        |
+|-----|----------|---------|----------------------------------------------------|
+|  7  | Reserved |    0    | Reads as 0, writes ignored.                        |
+|  6  | BW       |    1    | Branch immediate width: 0=imm4, 1=imm8             |
+|  5  | BRS      |    0    | Branch relative scale: 0=×1, 1=×4 (<<2)            |
+|  4  | IE       |    0    | Interrupt enable                                   |
+|  3  | CEN      |    1    | Carry enable                                       |
+|  2  | SIGN     |    1    | Signed arithmetic mode                             |
+| 1:0 | W (LINK) |   00    | Accumulator link width: UL(4), LK8, LK16, reserved |
+
 
 ## Instructions
 The following table lists the architecture instructions:
@@ -58,20 +73,19 @@ Notes:
 - **Bold**: Newly added / under review.
 - **WFI**: Wait-For-Interrupt was promoted to keep consistency on all non-mandatory instructions, the **MAD** instruction that it replaced could be part of a new extension (CFG reserved = 1) together with DIV and others math operations.
 - **RRS**: Even though rotate rs0 only saves one instruction (from: SS → RACC → SS ; to: XOP → RRS), it was chosen to save a little bit of power from data migration to do so.
-- **SS/SA**: Due to *RRS* instruction, now is under consideration to change **SS/SA** to swap only active width W instead of full register.
-- **CFG**: Can be changed to load configuration from immediate (imm) instead of a swap.
 
-## Instructions Review:
+## Main Instructions:
 - **Not Mandatory / Custom Instructions**: Opcodes marked “not mandatory” may be used for custom extensions by implementers. Code that uses them is not compatible with baseline MISA-O cores.
 - **INV**: `ACC ← ~ACC` within the active width W (4/8/16); *flags unchanged*.
 - **RACC/RRS**: Rotate Accumulator / Register Source - It will treat ACC/RS0 as a single register and shift rotate it by "Operation mode" size to the right; In LK16 mode, this instruction has no effect (NOP).
 - **RSS/RSA**: It will treat RS/RA as a stack and rotate it *(currently looks like a swap, but later on if more register where added it will truly rotate)*.
-- **SS/SA**:  Swap **ACC** *with* **RS0/RA0** (full 16-bit), regardless of W: `ACC ↔ RS0/RA0`.
+- **SS**:  Swaps the contents of **ACC** *with* source operand register 0 (**RS0**), respecting the active **W** (word-size) configuration: `ACC ↔ RS0 (W-bits)`.
+- **SA**:  Swaps the full contents of **ACC** *with* address register 0 (**RA0**) (full 16-bit), ignoring the **W** size configuration: `ACC ↔ RS0/RA0`.
 - **JAL/JMP**: All jumps will be based on register ra0, but linking would be saved on ra1.
   - **JAL**: `ra1 ← PC_next`; `PC ← ra0`
   - **JMP**: `PC ← ra0`
-- **CFG**: Swap CFG register with acc[7:0].
-- **Branches** (PC-relative): If the condition is true: **PC ← PC_next + ( *sign_extend*(BW ? imm8 : imm4) << (BRS ? 2 : 0) )**; Else: **PC ← PC_next**; *flags unchanged*.
+- **CFG #imm**: Loads the *immediate* (**#imm**) value into the **CFG** register. The **CFG** register is also *memory-mapped* at address **0x00** for direct access. *(Useful for changing link width (W) or enabling features without register overhead.)*
+- **Branches** (PC-relative): If (cond): **PC ← PC_next + ( *sign_extend*(BW ? imm8 : imm4) << (BRS ? 2 : 0) )**; Else: **PC ← PC_next**; *flags unchanged*.
   - **BEQz #imm**: Branch if `acc == 0`.
   - **BC   #imm**: Branch if `Carry C == 1`.
   - **BTST #imm**: Tests bit `acc[idx]` where `idx = rs0[3:0]`; sets `C=bit`; `acc` not written.
@@ -96,26 +110,49 @@ Notes:
       - **UL**: `tmp ← [addr]; tmp[3:0] ← acc[3:0]; [addr] ← tmp`
     - If `AM=1`: `addr ← addr + (DIR ? −stride : +stride)`
     - Flags: **unchanged**.
-- **Interrupts**:
-    - **Interrupts**: Not mandatory, *ia* holds the *Interrupt Service Routine* (ISR) page *Most Significant Byte* (MSB). On interrupt:
-      - The CPU **stores PC_next, CFG/FLAGS, acc, RS0/RS1, RA0/RA1** at fixed offsets in page `ia` (see layout below),
-      - latches `iar ← ia`, **clears IE**, clears any pending **XOP**, and
-      - **jumps to** `ia<<8 + 0x10` (the ISR entry).
-    - **WFI\***: Wait-For-Interrupt makes the processor sleep until an interrupt sign is received.
-    - **SWI\***: Triggers a software interrupt; flow identical to an external IRQ: autosave on the ia page, latches `iar←ia`, clears IE (`IE←0`) and jumps to `ia<<8 + 0x10`.
-    - **SIA\***: Swap lower *acc* data (acc[7:0]) with *ia* register (ia = acc[7:0] && acc[7:0] = ia).
-    - **RETI\***: Restores state from the *iar* page and resumes execution.
-      - Base address: **base = iar << 8**
-      - Hardware restores:
-        - **PC** ← [base+0x00..0x01]        ; PC_next snapshot
-        - **RA1** ← [base+0x0C..0x0D]       ; link/return register
-        - **IA**  ← [base+0x0E]             ; interrupt page MSB
-        - **IAR** ← [base+0x0F]             ; previous latched page (for nested unwinding)
-        - **CFG** ← [base+0x02]             ;
-        - **FLAGS** ← [base+0x03]           ;
-      - **Not restored by RETI**: **ACC**, **RS0**, **RS1**, **RA0** — the ISR must restore them in software before RETI.
-      - After RETI, **IE** follows the IE bit of the active **CFG** (restored or left as set by the ISR).
-    - Fixed layout within the ia page:
+- **Carry**: CEN: when 1, ADD/SUB/INC/DEC use carry/borrow-in and update C; when 0, carry-in is forced to 0 (C still updated):
+  - **ADD/INC**: Carry-out.
+  - **SUB/DEC**: Borrow (C = 1).
+  - **SHL/SHR**: Holds expelled bit.
+
+### Notes:
+- Branch
+  - BW/BRS are global (from CFG). Keep them constant within a function.
+  - With imm4 and large scaling (e.g., <<2), targets should be aligned accordingly to avoid padding.
+  - Taking a branch does not modify flags and clears any pending XOP.
+ 
+## Optional Instructions:
+
+### Interrupts:
+
+#### Mapping:
+| Offset    | Description                | Width |
+| --------- | -------------------------- | ----- |
+| 0x00      | PC_next low/high           | 16b   |
+| 0x02      | CFG snapshot               | 8b    |
+| 0x03      | FLAGS snapshot             | 8b    |
+| 0x04–0x0F | Registers and ISR metadata | —     |
+
+#### Instructions:
+  - **Interrupts**: Not mandatory, *ia* holds the *Interrupt Service Routine* (ISR) page *Most Significant Byte* (MSB). On interrupt:
+    - The CPU **stores PC_next, CFG/FLAGS, acc, RS0/RS1, RA0/RA1** at fixed offsets in page `ia` (see layout below),
+    - latches `iar ← ia`, **clears IE**, clears any pending **XOP**, and
+    - **jumps to** `ia<<8 + 0x10` (the ISR entry).
+  - **WFI\***: Wait-For-Interrupt makes the processor sleep until an interrupt sign is received.
+  - **SWI\***: Triggers a software interrupt; flow identical to an external IRQ: autosave on the ia page, latches `iar←ia`, clears IE (`IE←0`) and jumps to `ia<<8 + 0x10`.
+  - **SIA\***: Swap lower *acc* data (acc[7:0]) with *ia* register (ia = acc[7:0] && acc[7:0] = ia).
+  - **RETI\***: Restores state from the *iar* page and resumes execution.
+    - Base address: **base = iar << 8**
+    - Hardware restores:
+      - **PC** ← [base+0x00..0x01]        ; PC_next snapshot
+      - **RA1** ← [base+0x0C..0x0D]       ; link/return register
+      - **IA**  ← [base+0x0E]             ; interrupt page MSB
+      - **IAR** ← [base+0x0F]             ; previous latched page (for nested unwinding)
+      - **CFG** ← [base+0x02]             ;
+      - **FLAGS** ← [base+0x03]           ;
+    - **Not restored by RETI**: **ACC**, **RS0**, **RS1**, **RA0** — the ISR must restore them in software before RETI.
+    - After RETI, **IE** follows the IE bit of the active **CFG** (restored or left as set by the ISR).
+  - Fixed layout within the ia page:
 ```
 ; IA page:
 ; Saved on interrupt entry:      base = ia  << 8
@@ -133,16 +170,6 @@ Notes:
       +0x0F : IAR (8-bit)
       +0x10 : ISR entry (first instruction executed on entry)
 ```
-- **Carry**: CEN: when 1, ADD/SUB/INC/DEC use carry/borrow-in and update C; when 0, carry-in is forced to 0 (C still updated):
-  - **ADD/INC**: Carry-out.
-  - **SUB/DEC**: Borrow (C = 1).
-  - **SHL/SHR**: Holds expelled bit.
-
-### Notes:
-- Branch
-  - BW/BRS are global (from CFG). Keep them constant within a function.
-  - With imm4 and large scaling (e.g., <<2), targets should be aligned accordingly to avoid padding.
-  - Taking a branch does not modify flags and clears any pending XOP.
 
 ### Development:
 Currently there are some instructions that could became part of the ISA:
@@ -204,5 +231,7 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
 **LK**: Link was demoted to be replaced by a more versatile "Swap Configuration", now it's possible to enable auto-increment when reading/writing from/to memory with the advantage of also be able to secure a known working state for the functions.
 
 **Branches**: Planned to be based on ra0, under some consideration it was changed to immediate value. Because of the small quantity of registers this seems more reasonable, but could be changed back to utilize ra0.
+
+**SS/SA & CFG**: SS and SA was initially designed for quick register swapping, this design was adjusted to allow partial swaps respecting **W** (useful for endianness control). To complement this, **CFG** now supports immediate loading, easing state management and reducing register pressure. **SA** remains a full 16-bit swap for address manipulation, as partial swaps provide little benefit in this context.
 
 **Multiply**: The area/power cost of a hardware multiplier is high for this class of core, and the **base opcode map is full**. Comparable minimal CPUs also omit MUL. Software emulation (shift-add) handles 4/8/16-bit cases well — especially with *CEN* and *CC* — so the practical impact is low. But there is a plan to create an extension (CFG reserved = 1) that will replace non-mandatory instructions by new ones, like **MAD**, DIV, Vector MAD or other arithmetic operations. The idea behind having MUL instruction is to keep open the possibility of an implementation that could run DOOM.
