@@ -1,6 +1,6 @@
-# MISA-O Special Instructions Test Plan (Revised)
+# MISA-O Core Management Instructions Test Plan (Revised)
 
-This document outlines the verification plan for `tb_special.sv`. Since `RSx` and `RAx` are not directly observable, all verifications must be performed by swapping values back to `ACC` (`test_data`).
+This document outlines the verification plan for `tb_management.sv`. Since `RSx` and `RAx` are not directly observable, all verifications must be performed by swapping values back to `ACC` (`test_data`).
 
 **Key Verification Goals**:
 1.  **Indirect Observation**: Verify `RS0`, `RS1`, `RA0`, `RA1` by swapping content to `ACC`.
@@ -106,7 +106,7 @@ This document outlines the verification plan for `tb_special.sv`. Since `RSx` an
 
 # MISA-O ALU Test Plan
 
-This section outlines the verification plan for `tb_alu_full.sv`.
+This section outlines the verification plan for `tb_alu.sv`.
 
 **Key Verification Goals**:
 1.  **Arithmetic**: ADD, SUB, INC, DEC.
@@ -181,7 +181,7 @@ This section outlines the verification plan for `tb_alu_full.sv`.
 
 # MISA-O Control Instructions Test Plan
 
-This section outlines the verification plan for `tb_control_branch.sv`.
+This section outlines the verification plan for `tb_control.sv`.
 
 **Key Verification Goals**:
 1.  **Conditional Branches**: `BEQZ` (Zero), `BC` (Carry).
@@ -257,9 +257,9 @@ This section outlines the verification plan for `tb_control_branch.sv`.
 | **41** | `0x29` | `0xA8` | `XOP`, `RSA` | Swap `RA0` <-> `RA1`. `RA1` was `0x23`. `RA0` becomes `0x23`. | |
 | **42** | `0x2A` | `0xE8` | `XOP`, `SA` | Swap `ACC` <-> `RA0`. `ACC` becomes `0x23`. | `ACC=0x0023` |
 
-# MISA-O XMEM Test Plan
+# MISA-O eXtended Memory (XMEM) Test Plan
 
-This section outlines the verification plan for `tb_mem_xmem.sv`.
+This section outlines the verification plan for `tb_xmem.sv`.
 
 **Key Verification Goals**:
 1.  **UL Mode**: Verify nibble load/store (partial updates).

@@ -1,6 +1,6 @@
 `timescale 1ns / 1ps
 
-module tb_control_branch;
+module tb_control;
 
     // Instruction table
     localparam [3:0] CC   = 4'b0001;
@@ -138,8 +138,8 @@ module tb_control_branch;
     end
 
     initial begin
-        $dumpfile("waves_branch.vcd");
-        $dumpvars(0, tb_control_branch);
+        $dumpfile("waves_control.vcd");
+        $dumpvars(0, tb_control);
 
         rst = 1;
         mem_data_in = 0;

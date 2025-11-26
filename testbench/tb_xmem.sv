@@ -1,6 +1,6 @@
 `timescale 1ns / 1ps
 
-module tb_alu_full;
+module tb_xmem;
 
     // Instruction table
     localparam [3:0] CC   = 4'b0001;
@@ -51,14 +51,14 @@ module tb_alu_full;
     wire        test_carry;
 
     misao dut (
-        .clk(clk),
-        .rst(rst),
-        .mem_enable_read(mem_enable_read),
-        .mem_enable_write(mem_enable_write),
-        .mem_data_in(mem_data_in),
-        .mem_addr(mem_addr),
-        .mem_rw(mem_rw),
-        .mem_data_out(mem_data_out),
+        .clk(clk), 
+        .rst(rst), 
+        .mem_enable_read(mem_enable_read), 
+        .mem_enable_write(mem_enable_write), 
+        .mem_data_in(mem_data_in), 
+        .mem_addr(mem_addr), 
+        .mem_rw(mem_rw), 
+        .mem_data_out(mem_data_out), 
         .test_data(test_data),
         .test_carry(test_carry)
     );
@@ -99,15 +99,16 @@ module tb_alu_full;
         end
     endtask
 
-    // Task to check Carry value
-    task check_carry;
-        input expected;
+    // Task to check Memory value
+    task check_mem;
+        input [7:0] addr;
+        input [7:0] expected;
         begin
-            if (test_carry !== expected) begin
-                $display("ERROR at time %t: Carry mismatch. Expected %b, Got %b", $time, expected, test_carry);
+            if (memory[addr] !== expected) begin
+                $display("ERROR at time %t: MEM[%h] mismatch. Expected %h, Got %h", $time, addr, expected, memory[addr]);
                 $fatal(1);
             end else begin
-                $display("PASS at time %t: Carry = %b", $time, test_carry);
+                $display("PASS at time %t: MEM[%h] = %h", $time, addr, memory[addr]);
             end
         end
     endtask
@@ -132,68 +133,70 @@ module tb_alu_full;
 
     // Debug Monitor
     always @(posedge clk) begin
-        $display("Time %t: PC=%h State=%h L0=%h Nibble=%h ACC=%h RS0=%h C=%b MemRead=%b MemAddr=%h MemIn=%h", 
-                 $time, dut.pc, dut.state, dut.L0, dut.current_nibble, test_data, dut.bank_1[0], test_carry,
+        $display("Time %t: PC=%h State=%h L0=%h Nibble=%h ACC=%h RA0=%h RA1=%h MemRead=%b MemAddr=%h MemIn=%h", 
+                 $time, dut.pc, dut.state, dut.L0, dut.current_nibble, test_data, dut.bank_addr[0], dut.bank_addr[1],
                  mem_enable_read, mem_addr, mem_data_in);
     end
 
     initial begin
-        $dumpfile("waves_full.vcd");
-        $dumpvars(0, tb_alu_full);
+        $dumpfile("waves_xmem.vcd");
+        $dumpvars(0, tb_xmem);
 
         rst = 1;
         mem_data_in = 0;
         for (i = 0; i < 256; i = i + 1) memory[i] = 8'h00;
 
         // =================================================================
-        // Test Sequence (Based on ALU Test Plan)
+        // Test Sequence (Based on XMEM Test Plan)
         // =================================================================
 
-        // Phase 1: UL Mode (4-bit) Arithmetic
+        // Phase 1: Setup (LK16) - Init RA0=0x0080, RA1=0x0090
         memory[1]  = 8'h18; // XOP, CFG
-        memory[2]  = 8'h4C; // Imm 0x4C (UL, CEN=1)
-        memory[3]  = 8'h54; // LDi, 0x5
-        memory[4]  = 8'hE0; // NOP, SS (RS0=5)
-        memory[5]  = 8'h34; // LDi, 0x3 (ACC=3)
-        memory[6]  = 8'h30; // NOP, ADD (ACC=8)
-        memory[7]  = 8'h30; // NOP, ADD (ACC=D)
-        memory[8]  = 8'h30; // NOP, ADD (ACC=2, C=1)
-        memory[9]  = 8'h10; // NOP, CC (C=0)
-        memory[10] = 8'hB0; // NOP, INC (ACC=3)
-        memory[11] = 8'h38; // XOP, SUB (ACC=3-5=E, C=1)
+        memory[2]  = 8'h4E; // Imm 0x4E (LK16)
+        memory[3]  = 8'h84; // LDi, 0x8
+        memory[4]  = 8'h00; // 0x0, 0x0
+        memory[5]  = 8'h00; // 0x0, NOP (ACC=0x0080)
+        memory[6]  = 8'hE8; // XOP, SA (RA0=0x0080)
+        memory[7]  = 8'h94; // LDi, 0x9
+        memory[8]  = 8'h00; // 0x0, 0x0
+        memory[9]  = 8'h00; // 0x0, NOP (ACC=0x0090)
+        memory[10] = 8'hE8; // XOP, SA (RA0=0x0090)
+        memory[11] = 8'hA8; // XOP, RSA (RA1=0x0090, RA0=0x0080)
 
-        // Phase 2: UL Mode Logic & Shifts
-        memory[12] = 8'hC4; // LDi, 0xC
-        memory[13] = 8'hE0; // NOP, SS (RS0=C)
-        memory[14] = 8'hA4; // LDi, 0xA
-        memory[15] = 8'h50; // NOP, AND (ACC=8)
-        memory[16] = 8'h90; // NOP, OR (ACC=C)
-        memory[17] = 8'h98; // XOP, XOR (ACC=0)
-        memory[18] = 8'h58; // XOP, INV (ACC=F)
-        memory[19] = 8'hD0; // NOP, SHL (ACC=E, C=1)
-        memory[20] = 8'hD8; // XOP, SHR (ACC=7, C=0)
+        // Phase 2: UL Mode Store/Load
+        memory[12] = 8'h18; // XOP, CFG
+        memory[13] = 8'h4C; // Imm 0x4C (UL)
+        memory[14] = 8'h54; // LDi, 0x5
+        memory[15] = 8'hCC; // XMEM, 0xC (Store UL @RA0, Post-Inc)
+        memory[16] = 8'h34; // LDi, 0x3
+        memory[17] = 8'h8C; // XMEM, 0x8 (Store UL @RA0, No Inc)
+        memory[18] = 8'h0C; // XMEM, 0x0 (Load UL @RA0)
 
-        // Phase 3: LK8 Mode Arithmetic
-        memory[21] = 8'h18; // XOP, CFG
-        memory[22] = 8'h4D; // Imm 0x4D (LK8)
-        memory[23] = 8'h14; // LDi, 0x1
-        memory[24] = 8'h00; // 0x0, NOP (ACC=0x01)
-        memory[25] = 8'hE0; // NOP, SS (RS0=0x01)
-        memory[26] = 8'hF4; // LDi, 0xF
-        memory[27] = 8'h0F; // 0xF, NOP (ACC=0xFF)
-        memory[28] = 8'h30; // NOP, ADD (ACC=0x00, C=1)
+        // Phase 3: LK8 Mode Store/Load
+        memory[19] = 8'h18; // XOP, CFG
+        memory[20] = 8'h4D; // Imm 0x4D (LK8)
+        memory[21] = 8'hB4; // LDi, 0xB
+        memory[22] = 8'h55; // 0x5, 0x5 (ACC=0x5B)
+        memory[23] = 8'hCC; // XMEM, 0xC (Store Byte @RA0, Post-Inc)
+        memory[24] = 8'h04; // LDi, 0x0
+        memory[25] = 8'h00; // 0x0, 0x0 (ACC=0)
+        memory[26] = 8'h8C; // XMEM, 0x8 (Store Byte @RA0)
+        memory[27] = 8'h4C; // XMEM, 0x4 (Load Byte @RA0, Post-Inc)
+        memory[28] = 8'h6C; // XMEM, 0x6 (Load Byte @RA0, Post-Dec)
 
-        // Phase 4: LK16 Mode Arithmetic
+        // Phase 4: LK16 Mode & RA1
         memory[29] = 8'h18; // XOP, CFG
         memory[30] = 8'h4E; // Imm 0x4E (LK16)
         memory[31] = 8'h14; // LDi, 0x1
-        memory[32] = 8'h00; // 0x0, 0x0
-        memory[33] = 8'h00; // 0x0, NOP (ACC=0x0001)
-        memory[34] = 8'hE0; // NOP, SS (RS0=0x0001)
-        memory[35] = 8'hF4; // LDi, 0xF
-        memory[36] = 8'hFF; // 0xF, 0xF
-        memory[37] = 8'h0F; // 0xF, NOP (ACC=0xFFFF)
-        memory[38] = 8'h30; // NOP, ADD (ACC=0x0000, C=1)
+        memory[32] = 8'h22; // 0x2, 0x2
+        memory[33] = 8'h33; // 0x3, 0x3
+        memory[34] = 8'h44; // 0x4, 0x4 (ACC=0x1234)
+        memory[35] = 8'hCD; // XMEM, 0xD (Store Word @RA1, Post-Inc, AR=1)
+        memory[36] = 8'h04; // LDi, 0x0
+        memory[37] = 8'h00; // 0x0, 0x0
+        memory[38] = 8'h00; // 0x0, 0x0
+        memory[39] = 8'h00; // 0x0, 0x0 (ACC=0)
+        memory[40] = 8'h6D; // XMEM, 0x6 (Load Word @RA1, Post-Dec, AR=1)
 
         // =================================================================
         // Execution & Checks
@@ -202,52 +205,29 @@ module tb_alu_full;
         #50; rst = 0;
 
         // Phase 1 Checks
-        wait_for_addr(15'h0007); // After first ADD
-        check_acc(16'h0008); check_carry(0);
-
-        wait_for_addr(15'h0008); // After second ADD
-        check_acc(16'h000D); check_carry(0);
-
-        wait_for_addr(15'h0009); // After third ADD (Overflow)
-        check_acc(16'h0002); check_carry(1);
-
-        wait_for_addr(15'h000A); // After CC
-        check_carry(0);
-
-        wait_for_addr(15'h000B); // After INC
-        check_acc(16'h0003); check_carry(0);
-
-        wait_for_addr(15'h000C); // After SUB
-        check_acc(16'h000E); check_carry(1);
+        wait_for_addr(15'h000C); // After Setup
+        // RA0 should be 0x0080, RA1 should be 0x0090.
+        // We can't check them directly easily without swapping, but subsequent stores will verify.
 
         // Phase 2 Checks
-        wait_for_addr(15'h0010); // After AND
-        check_acc(16'h0008);
-
-        wait_for_addr(15'h0011); // After OR
-        check_acc(16'h000C);
-
-        wait_for_addr(15'h0012); // After XOR
-        check_acc(16'h0000);
-
-        wait_for_addr(15'h0013); // After INV
-        check_acc(16'h000F);
-
-        wait_for_addr(15'h0014); // After SHL
-        check_acc(16'h000E); check_carry(1);
-
-        wait_for_addr(15'h0015); // After SHR
-        check_acc(16'h0007); check_carry(0);
+        wait_for_addr(15'h0013); // After UL operations
+        check_mem(8'h80, 8'h05); // [0x80] = 05
+        check_mem(8'h81, 8'h03); // [0x81] = 03
+        check_acc(16'h0003); // ACC should be 3
 
         // Phase 3 Checks
-        wait_for_addr(15'h001D); // After ADD (LK8)
-        check_acc(16'h0000); check_carry(1);
+        wait_for_addr(15'h001D); // After LK8 operations
+        check_mem(8'h81, 8'h5B); // [0x81] = 5B (Overwrote 03)
+        check_mem(8'h82, 8'h00); // [0x82] = 00
+        check_acc(16'h0000); // ACC should be 0
 
         // Phase 4 Checks
-        wait_for_addr(15'h0027); // After ADD (LK16)
-        check_acc(16'h0000); check_carry(1);
+        wait_for_addr(15'h0029); // After LK16 operations
+        check_mem(8'h90, 8'h34); // [0x90] = 34
+        check_mem(8'h91, 8'h12); // [0x91] = 12
+        check_acc(16'h1234); // ACC should be 1234
 
-        $display("ALL ALU TESTS PASSED");
+        $display("ALL XMEM TESTS PASSED");
         $finish;
     end
 

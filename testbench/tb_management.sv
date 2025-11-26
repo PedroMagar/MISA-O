@@ -1,6 +1,6 @@
 `timescale 1ns / 1ps
 
-module tb_special;
+module tb_management;
 
     // Instruction table
     localparam [3:0] CC   = 4'b0001;
@@ -125,8 +125,8 @@ module tb_special;
     end
 
     initial begin
-        $dumpfile("waves_special.vcd");
-        $dumpvars(0, tb_special);
+        $dumpfile("waves_management.vcd");
+        $dumpvars(0, tb_management);
 
         rst = 1;
         mem_data_in = 0;
