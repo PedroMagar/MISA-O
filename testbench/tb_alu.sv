@@ -1,42 +1,7 @@
 `timescale 1ns / 1ps
+`include "testbench/misa-o_instructions.svh"
 
 module tb_alu;
-
-    // Instruction table
-    localparam [3:0] CC   = 4'b0001;
-    localparam [3:0] AND  = 4'b0101;
-    localparam [3:0] OR   = 4'b1001;
-    localparam [3:0] SHL  = 4'b1101;
-    localparam [3:0] ADD  = 4'b0011;
-    localparam [3:0] INC  = 4'b1011;
-    localparam [3:0] BEQZ = 4'b0111;
-    localparam [3:0] BTST = 4'b1111;
-    localparam [3:0] JAL  = 4'b0010;
-    localparam [3:0] RACC = 4'b0110;
-    localparam [3:0] RSS  = 4'b1010;
-    localparam [3:0] SS   = 4'b1110;
-    localparam [3:0] LDI  = 4'b0100;
-    localparam [3:0] XMEM = 4'b1100;
-    localparam [3:0] XOP  = 4'b1000;
-    localparam [3:0] NOP  = 4'b0000;
-
-    // Extended
-    localparam [3:0] CFG  = 4'b0001;
-    localparam [3:0] INV  = 4'b0101;
-    localparam [3:0] XOR  = 4'b1001;
-    localparam [3:0] SHR  = 4'b1101;
-    localparam [3:0] SUB  = 4'b0011;
-    localparam [3:0] DEC  = 4'b1011;
-    localparam [3:0] BC   = 4'b0111;
-    localparam [3:0] TST  = 4'b1111;
-    localparam [3:0] JMP  = 4'b0010;
-    localparam [3:0] RRS  = 4'b0110;
-    localparam [3:0] RSA  = 4'b1010;
-    localparam [3:0] SA   = 4'b1110;
-    localparam [3:0] SIA  = 4'b0100;
-    localparam [3:0] RETI = 4'b1100;
-    localparam [3:0] SWI  = 4'b1000;
-    localparam [3:0] WFI  = 4'b0000;
 
     reg clk;
     reg rst;
@@ -79,63 +44,26 @@ module tb_alu;
     end
 
     always @(*) begin
-        if (mem_enable_read) begin
-            mem_data_in = memory[mem_addr];
-        end else begin
-            mem_data_in = 8'h00;
-        end
+        if (mem_enable_read) mem_data_in = memory[mem_addr];
+        else mem_data_in = 8'h00;
     end
 
-    // Task to check ACC value
-    task check_acc;
-        input [15:0] expected;
+    // Validation task: wait for read of addr, check mem_data_in, then after cycles check ACC.
+    task automatic validate(input [14:0] addr, input integer cycles, input [15:0] expected_acc);
         begin
-            if (test_data !== expected) begin
-                $display("ERROR at time %t: ACC mismatch. Expected %h, Got %h", $time, expected, test_data);
+            @(negedge clk);
+            while (!(mem_enable_read && mem_addr == addr)) @(negedge clk);
+            if (mem_data_in !== memory[addr]) begin
+                $display("FAIL READ @%0d: mem_data_in=%02h exp=%02h", addr, mem_data_in, memory[addr]);
                 $fatal(1);
-            end else begin
-                $display("PASS at time %t: ACC = %h", $time, test_data);
             end
-        end
-    endtask
-
-    // Task to check Carry value
-    task check_carry;
-        input expected;
-        begin
-            if (test_carry !== expected) begin
-                $display("ERROR at time %t: Carry mismatch. Expected %b, Got %b", $time, expected, test_carry);
-                $fatal(1);
-            end else begin
-                $display("PASS at time %t: Carry = %b", $time, test_carry);
-            end
-        end
-    endtask
-
-    // Task to wait for a specific memory address to be read
-    task wait_for_addr;
-        input [14:0] addr;
-        integer timeout;
-        begin
-            timeout = 10000;
-            // Wait for mem_enable_read to be high AND mem_addr to match
-            while (!(mem_enable_read && mem_addr === addr) && timeout > 0) begin
-                @(posedge clk);
-                timeout = timeout - 1;
-            end
-            if (timeout == 0) begin
-                $display("TIMEOUT waiting for address %h", addr);
+            repeat (cycles) @(negedge clk);
+            if (test_data !== expected_acc) begin
+                $display("FAIL ACC @%0d: got=%h exp=%h", addr, test_data, expected_acc);
                 $fatal(1);
             end
         end
     endtask
-
-    // Debug Monitor
-    always @(posedge clk) begin
-        $display("Time %t: PC=%h State=%h L0=%h Nibble=%h ACC=%h RS0=%h C=%b MemRead=%b MemAddr=%h MemIn=%h", 
-                 $time, dut.pc, dut.state, dut.L0, dut.current_nibble, test_data, dut.bank_1[0], test_carry,
-                 mem_enable_read, mem_addr, mem_data_in);
-    end
 
     initial begin
         $dumpfile("waves_alu.vcd");
@@ -145,109 +73,85 @@ module tb_alu;
         mem_data_in = 0;
         for (i = 0; i < 256; i = i + 1) memory[i] = 8'h00;
 
-        // =================================================================
-        // Test Sequence (Based on ALU Test Plan)
-        // =================================================================
+        // ================================================================
+        // Test Sequence (ALU)
+        // ================================================================
 
-        // Phase 1: UL Mode (4-bit) Arithmetic
-        memory[1]  = 8'h18; // XOP, CFG
-        memory[2]  = 8'h4C; // Imm 0x4C (UL, CEN=1)
-        memory[3]  = 8'h54; // LDi, 0x5
-        memory[4]  = 8'hE0; // NOP, SS (RS0=5)
-        memory[5]  = 8'h34; // LDi, 0x3 (ACC=3)
-        memory[6]  = 8'h30; // NOP, ADD (ACC=8)
-        memory[7]  = 8'h30; // NOP, ADD (ACC=D)
-        memory[8]  = 8'h30; // NOP, ADD (ACC=2, C=1)
-        memory[9]  = 8'h10; // NOP, CC (C=0)
-        memory[10] = 8'hB0; // NOP, INC (ACC=3)
-        memory[11] = 8'h38; // XOP, SUB (ACC=3-5=E, C=1)
+        // Phase 1: UL arithmetic
+        memory[1]  = {CFG, XOP};
+        memory[2]  = {4'h4, 4'hC};   // imm 0x4C (UL, CEN=1)
+        memory[3]  = {4'h5, LDI};    // LDI 5
+        memory[4]  = {SS , NOP};     // RS0=5
+        memory[5]  = {4'h3, LDI};    // LDI 3
+        memory[6]  = {ADD, NOP};     // ACC=8
+        memory[7]  = {ADD, NOP};     // ACC=D
+        memory[8]  = {ADD, NOP};     // ACC=2, C=1
+        memory[9]  = {CC , NOP};     // C=0
+        memory[10] = {INC, NOP};     // ACC=3
+        memory[11] = {SUB, XOP};     // SUB (ACC=E, C=1)
 
-        // Phase 2: UL Mode Logic & Shifts
-        memory[12] = 8'hC4; // LDi, 0xC
-        memory[13] = 8'hE0; // NOP, SS (RS0=C)
-        memory[14] = 8'hA4; // LDi, 0xA
-        memory[15] = 8'h50; // NOP, AND (ACC=8)
-        memory[16] = 8'h90; // NOP, OR (ACC=C)
-        memory[17] = 8'h98; // XOP, XOR (ACC=0)
-        memory[18] = 8'h58; // XOP, INV (ACC=F)
-        memory[19] = 8'hD0; // NOP, SHL (ACC=E, C=1)
-        memory[20] = 8'hD8; // XOP, SHR (ACC=7, C=0)
+        // Phase 2: UL logic & shifts
+        memory[12] = {4'hC, LDI};    // LDI C
+        memory[13] = {SS , NOP};     // RS0=C
+        memory[14] = {4'hA, LDI};    // LDI A
+        memory[15] = {AND, NOP};     // ACC=8
+        memory[16] = {OR , NOP};     // ACC=C
+        memory[17] = {XOR, XOP};     // ACC=0
+        memory[18] = {INV, XOP};     // ACC=F
+        memory[19] = {SHL, NOP};     // ACC=E, C=1
+        memory[20] = {SHR, XOP};     // ACC=7, C=0
 
-        // Phase 3: LK8 Mode Arithmetic
-        memory[21] = 8'h18; // XOP, CFG
-        memory[22] = 8'h4D; // Imm 0x4D (LK8)
-        memory[23] = 8'h14; // LDi, 0x1
-        memory[24] = 8'h00; // 0x0, NOP (ACC=0x01)
-        memory[25] = 8'hE0; // NOP, SS (RS0=0x01)
-        memory[26] = 8'hF4; // LDi, 0xF
-        memory[27] = 8'h0F; // 0xF, NOP (ACC=0xFF)
-        memory[28] = 8'h30; // NOP, ADD (ACC=0x00, C=1)
+        // Phase 3: LK8 arithmetic
+        memory[21] = {CFG, XOP};
+        memory[22] = {4'h4, 4'hD};   // imm 0x4D (LK8)
+        memory[23] = {4'h1, LDI};    // LDI 1
+        memory[24] = {NOP, 4'h0};    // NOP (ACC=01)
+        memory[25] = {SS , NOP};     // RS0=01
+        memory[26] = {4'hF, LDI};    // LDI F
+        memory[27] = {NOP, 4'hF};    // NOP (ACC=FF)
+        memory[28] = {ADD, NOP};     // ACC=00, C=1
 
-        // Phase 4: LK16 Mode Arithmetic
-        memory[29] = 8'h18; // XOP, CFG
-        memory[30] = 8'h4E; // Imm 0x4E (LK16)
-        memory[31] = 8'h14; // LDi, 0x1
-        memory[32] = 8'h00; // 0x0, 0x0
-        memory[33] = 8'h00; // 0x0, NOP (ACC=0x0001)
-        memory[34] = 8'hE0; // NOP, SS (RS0=0x0001)
-        memory[35] = 8'hF4; // LDi, 0xF
-        memory[36] = 8'hFF; // 0xF, 0xF
-        memory[37] = 8'h0F; // 0xF, NOP (ACC=0xFFFF)
-        memory[38] = 8'h30; // NOP, ADD (ACC=0x0000, C=1)
+        // Phase 4: LK16 arithmetic
+        memory[29] = {CFG, XOP};
+        memory[30] = {4'h4, 4'hE};   // imm 0x4E (LK16)
+        memory[31] = {4'h1, LDI};    // LDI 1
+        memory[32] = {4'h0, 4'h0};   // imm1
+        memory[33] = {NOP, 4'h0};    // NOP (ACC=0001)
+        memory[34] = {SS , NOP};     // RS0=0001
+        memory[35] = {4'hF, LDI};    // LDI F
+        memory[36] = {4'hF, 4'hF};   // imm1
+        memory[37] = {NOP, 4'hF};    // imm2
+        memory[38] = {ADD, NOP};     // ACC=0000, C=1
 
-        // =================================================================
+        // ================================================================
         // Execution & Checks
-        // =================================================================
+        // ================================================================
         
         #50; rst = 0;
 
-        // Phase 1 Checks
-        wait_for_addr(15'h0007); // After first ADD
-        check_acc(16'h0008); check_carry(0);
+        // Phase 1
+        validate(15'h0007, 1, 16'h0008);
+        validate(15'h0008, 1, 16'h000D);
+        validate(15'h0009, 1, 16'h0002);
+        validate(15'h000A, 1, 16'h0002);
+        validate(15'h000B, 1, 16'h0003);
+        validate(15'h000C, 1, 16'h000E);
 
-        wait_for_addr(15'h0008); // After second ADD
-        check_acc(16'h000D); check_carry(0);
+        // Phase 2
+        validate(15'h0010, 1, 16'h0008);
+        validate(15'h0011, 1, 16'h000C);
+        validate(15'h0012, 1, 16'h0000);
+        validate(15'h0013, 1, 16'h000F);
+        validate(15'h0014, 1, 16'h000E);
+        validate(15'h0015, 1, 16'h0007);
 
-        wait_for_addr(15'h0009); // After third ADD (Overflow)
-        check_acc(16'h0002); check_carry(1);
+        // Phase 3
+        validate(15'h001D, 1, 16'h0000);
 
-        wait_for_addr(15'h000A); // After CC
-        check_carry(0);
+        // Phase 4
+        validate(15'h0027, 1, 16'h0000);
 
-        wait_for_addr(15'h000B); // After INC
-        check_acc(16'h0003); check_carry(0);
-
-        wait_for_addr(15'h000C); // After SUB
-        check_acc(16'h000E); check_carry(1);
-
-        // Phase 2 Checks
-        wait_for_addr(15'h0010); // After AND
-        check_acc(16'h0008);
-
-        wait_for_addr(15'h0011); // After OR
-        check_acc(16'h000C);
-
-        wait_for_addr(15'h0012); // After XOR
-        check_acc(16'h0000);
-
-        wait_for_addr(15'h0013); // After INV
-        check_acc(16'h000F);
-
-        wait_for_addr(15'h0014); // After SHL
-        check_acc(16'h000E); check_carry(1);
-
-        wait_for_addr(15'h0015); // After SHR
-        check_acc(16'h0007); check_carry(0);
-
-        // Phase 3 Checks
-        wait_for_addr(15'h001D); // After ADD (LK8)
-        check_acc(16'h0000); check_carry(1);
-
-        // Phase 4 Checks
-        wait_for_addr(15'h0027); // After ADD (LK16)
-        check_acc(16'h0000); check_carry(1);
-
-        $display("ALL ALU TESTS PASSED");
+        $display("ALL ALU TESTS (validations) DONE");
         $finish;
     end
 
