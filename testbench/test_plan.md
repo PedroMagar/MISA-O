@@ -1,4 +1,13 @@
-# MISA-O Core Management Instructions Test Plan (Revised)
+# MISA-O Test Plan
+
+Clean, nibble-addressed plans for the ref core testbenches (`tb_management`, `tb_alu`, `tb_control`, `tb_xmem`). Assumptions:
+- Reset `CFG` = 0x4C (UL, BW=imm8, BRS=0, IE=0, CEN=1, SIGN=1).
+- PC steps by nibble; `mem_addr = pc[15:1]`.
+- `BTST` uses `RS0[3:0]` as bit index into ACC; immediate nibble is consumed but ignored.
+- `BC` is the XOP-extended form of `BEQZ`; other extended ops follow the same XOP rule.
+- Width from `LINK`: UL=4b, LK8=8b, LK16=16b.
+
+# MISA-O Core Management Instructions Test Plan
 
 This document outlines the verification plan for `tb_management.sv`. Since `RSx` and `RAx` are not directly observable, all verifications must be performed by swapping values back to `ACC` (`test_data`).
 
@@ -10,6 +19,19 @@ This document outlines the verification plan for `tb_management.sv`. Since `RSx`
 3.  **Stack Rotation**: Verify `RSS` and `RSA` by loading distinct values into index 0 and 1 registers and rotating them.
 
 ## Test Sequence
+Goals: verify register swaps/rotations via ACC observation.
+- SS (UL): low nibble swap only; upper nibbles untouched.
+- SA (UL): full 16-bit swap regardless of width.
+- RSS/RSA: rotate RS/RA banks (with two entries it’s a swap).
+- RRS: rotate RS0 (NOP in LK16).
+
+Sequence (nibble addresses as in TB):
+1. Load ACC=0xAAAA in LK16.
+2. Switch to UL; SS twice to show only low nibble moves (ACC ends 0xAAA1).
+3. SA in UL swaps full 16b with RA0 (ACC->0, then back to 0xAAA1 with load 0x5).
+4. RSS in LK16: load distinct patterns into RS0/RS1 and rotate; expect ACC=0xBBBB after swap back.
+5. RSA in LK16: load distinct into RA0/RA1 and rotate; expect ACC=0x1111 after swap back.
+6. RRS in UL: rotate RS0, SS back into ACC low nibble should be 0.
 
 ### Phase 1: Setup & Pattern Loading
 **Goal**: Initialize `ACC` with a known 16-bit pattern (`0xAAAA`) to verify partial swaps later.
@@ -104,6 +126,19 @@ This document outlines the verification plan for `tb_management.sv`. Since `RSx`
 | **46** | `0x2E` | `0xE0` | `NOP`, `SS` | Swap `ACC[0]` <-> `RS0[3:0]`. `RS0` low nibble should be `0` (if rotated away). | `ACC[0] = 0` |
 | **CHECK** | | | | **Verify ACC[0] is 0** | |
 
+### Phase 7: Advanced RRS NOP (LK16)
+**Goal**: Prove `RRS` is a NOP in LK16 (RS0/ACC unchanged).
+**Mode**: LK16.
+
+| Step | Address | Byte Value | Opcode/Imm | Description | Expected State |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **47** | `0x2F` | `0x18` | `XOP`, `CFG` | Enter extended CFG. | |
+| **48** | `0x30` | `0x4E` | `0xE`, `0x4` | CFG=0x4E (LK16). | `CFG=LK16` |
+| **49** | `0x31` | `0x54` | `LDi`, `0x5` | ACC = 0x0005. | `ACC=0x0005` |
+| **50** | `0x32` | `0xE0` | `NOP`, `SS` | RS0 = 0x0005. | |
+| **51** | `0x33` | `0x68` | `XOP`, `RRS` | RRS should be NOP in LK16. | RS0 unchanged |
+| **52** | `0x34` | `0xE0` | `NOP`, `SS` | Swap back. ACC must remain 0x0005. | `ACC=0x0005` |
+
 # MISA-O ALU Test Plan
 
 This section outlines the verification plan for `tb_alu.sv`.
@@ -116,6 +151,21 @@ This section outlines the verification plan for `tb_alu.sv`.
 5.  **Link Modes**: Verify operations in UL (4-bit), LK8 (8-bit), and LK16 (16-bit) modes.
 
 ## Test Sequence
+
+## ALU (`tb_alu.sv`)
+Goals: arithmetic, logic, shifts, carry, and width coverage.
+- UL arithmetic: ADD overflows carry, INC, SUB (borrow as carry=1), CC.
+- UL logic/shifts: AND/OR/XOR/INV/SHL/SHR with carry checks.
+- LK8 arithmetic: ADD with carry-out.
+- LK16 arithmetic: ADD with carry-out on word.
+
+Sequence mirrors the TB memory image:
+- Phase1 UL: cfg UL, LDI 5 -> SS, LDI 3 -> ADD x3, CC, INC, XOP SUB.
+- Phase2 UL logic: LDI C -> SS, LDI A -> AND, OR, XOP XOR, XOP INV, SHL, XOP SHR.
+- Phase3 LK8: cfg LK8, LDI 1 -> SS, LDI F -> ADD (expect 0x00 carry=1).
+- Phase4 LK16: cfg LK16, LDI 0x0001 -> SS, LDI 0xFFFF -> ADD (expect 0x0000 carry=1).
+
+Checks: ACC/carry at the same nibble addresses used in the TB `validate` calls.
 
 ### Phase 1: UL Mode (4-bit) Arithmetic
 **Mode**: UL (Default/Reset).
@@ -179,6 +229,28 @@ This section outlines the verification plan for `tb_alu.sv`.
 | **37** | `0x25` | `0x0F` | `0xF`, `NOP` | | |
 | **38** | `0x26` | `0x30` | `NOP`, `ADD` | `ACC = 0xFFFF + 0x0001 = 0x0000`. Carry=1. | `ACC=0x0000`, `C=1` |
 
+### Phase 5: Advanced DEC and Shifts (CEN variations, wider widths)
+**Mode**: UL then LK8 then LK16.
+
+| Step | Address | Byte Value | Opcode/Imm | Description | Expected State |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **39** | `0x27` | `0x18` | `XOP`, `CFG` | Ensure CEN=1 (0x4C). | `CFG=0x4C` |
+| **40** | `0x28` | `0x34` | `LDi`, `0x3` | ACC=3. | |
+| **41** | `0x29` | `0xB8` | `XOP`, `DEC` | ACC=2, C=0 (no borrow). | `ACC=0x0002`,`C=0` |
+| **42** | `0x2A` | `0x18` | `XOP`, `CFG` | Load cfg with CEN=0 (0x44). | |
+| **43** | `0x2B` | `0x44` | `0x4`, `0x4` | CFG=0x44 (UL, CEN=0). | `CEN=0` |
+| **44** | `0x2C` | `0xB8` | `XOP`, `DEC` | Borrow sets C=1 even with CEN=0. | `ACC=0x0001`,`C=1` |
+| **45** | `0x2D` | `0x18` | `XOP`, `CFG` | Enter LK8 (0x4D). | |
+| **46** | `0x2E` | `0x4D` | `0xD`, `0x4` | CFG=0x4D. | `CFG=LK8` |
+| **47** | `0x2F` | `0xF4` | `LDi`, `0xF` | ACC=0x00F. | |
+| **48** | `0x30` | `0xD0` | `NOP`, `SHL` | ACC=0x01E, C from bit7. | |
+| **49** | `0x31` | `0xD8` | `XOP`, `SHR` | ACC=0x00F, C=0. | |
+| **50** | `0x32` | `0x18` | `XOP`, `CFG` | Enter LK16 (0x4E). | |
+| **51** | `0x33` | `0x4E` | `0xE`, `0x4` | CFG=0x4E. | `CFG=LK16` |
+| **52** | `0x34` | `0x14` | `LDi`, `0x1` | ACC=0x0001. | |
+| **53** | `0x35` | `0xF0` | `NOP`, `SHL` | ACC=0x0002, C from bit15. | |
+| **54** | `0x36` | `0xF8` | `XOP`, `SHR` | ACC=0x0001, C=0. | |
+
 # MISA-O Control Instructions Test Plan
 
 This section outlines the verification plan for `tb_control.sv`.
@@ -190,6 +262,11 @@ This section outlines the verification plan for `tb_control.sv`.
 4.  **Relative Offsets**: Verify forward skipping.
 
 ## Test Sequence
+Goals: branches (BEQZ/BC), BTST->carry, JMP/JAL via RA0/RA1, link capture.
+- Phase1: BEQZ taken then not taken in UL.
+- Phase2: BTST sets C from `ACC[RS0]`, XOP BC takes the branch when C=1.
+- Phase3: JMP via RA0 (set by SA) lands at target and executes LDI 5.
+- Phase4: JAL to RA0=0x0028; RA1 should hold return; swaps at target yield ACC=0x0023.
 
 ### Phase 1: Conditional Branches (UL Mode)
 **Mode**: UL (Default/Reset).
@@ -257,6 +334,19 @@ This section outlines the verification plan for `tb_control.sv`.
 | **41** | `0x29` | `0xA8` | `XOP`, `RSA` | Swap `RA0` <-> `RA1`. `RA1` was `0x23`. `RA0` becomes `0x23`. | |
 | **42** | `0x2A` | `0xE8` | `XOP`, `SA` | Swap `ACC` <-> `RA0`. `ACC` becomes `0x23`. | `ACC=0x0023` |
 
+### Phase 5: Advanced Branches (BW/BRS, negative offset, non-taken BC)
+**Mode**: UL with BW tweaks.
+
+| Step | Address | Byte Value | Opcode/Imm | Description | Expected State |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **43** | `0x2B` | `0x18` | `XOP`, `CFG` | Load CFG with BW=imm4, BRS=1 (e.g., 0x48). | |
+| **44** | `0x2C` | `0x48` | `0x8`, `0x4` | CFG=0x48 (UL, BW=0, BRS=1). | |
+| **45** | `0x2D` | `0x04` | `LDi`, `0x0` | ACC=0. | |
+| **46** | `0x2E` | `0x27` | `BEQZ`, `0xF` | Negative offset (imm4=F -> -1) scaled <<2 -> -4; taken because ACC=0. | PC back by 4 nibbles |
+| **47** | `0x2F` | `0x08` | `XOP`, `0x0` | XOP prefix. | |
+| **48** | `0x30` | `0x27` | `BC`, `0x2` | With C=0 (from default), BC not taken; prove fall-through. | PC -> 0x31 |
+| **49** | `0x31` | `0x14` | `LDi`, `0x1` | Executes sequentially (non-taken BC). | `ACC=0x0001` |
+
 # MISA-O eXtended Memory (XMEM) Test Plan
 
 This section outlines the verification plan for `tb_xmem.sv`.
@@ -270,6 +360,13 @@ This section outlines the verification plan for `tb_xmem.sv`.
 6.  **Addressing**: Verify use of RA1.
 
 ## Test Sequence
+Goals: XMEM load/store across widths, post-inc/dec, AR select.
+- Setup LK16: RA0=0x0080, RA1=0x0090.
+- UL: store nibble with/without post-inc; load nibble.
+- LK8: store/load byte with post-inc/dec; verify memory bytes.
+- LK16 + AR=RA1: store/load word with post-inc/dec; verify endianness (little) and ACC=0x1234.
+
+Checks: ACC via `validate`, memory via `check_mem_byte` (addresses in tests match TB).
 
 ### Phase 1: Setup (LK16)
 **Goal**: Initialize RA0 and RA1.
@@ -335,3 +432,23 @@ This section outlines the verification plan for `tb_xmem.sv`.
 | **38** | `0x26` | `0x00` | `0x0`, `0x0` | | |
 | **39** | `0x27` | `0x00` | `0x0`, `0x0` | | |
 | **40** | `0x28` | `0x6D` | `XMEM`, `0x6` | Load Word @RA1 (0x92), Post-Dec (DIR=1, AR=1). <br> `RA1` -> `0x90`. Load from `0x90`. <br> `ACC` = `0x1234`. | `ACC=0x1234` |
+
+### Phase 5: Advanced XMEM (AR select, DIR=dec in UL, store endianness)
+**Mode**: UL then LK8/UL for AR1 and DIR checks; LK16 store endianness.
+
+| Step | Address | Byte Value | Opcode/Imm | Description | Expected State |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **41** | `0x29` | `0x18` | `XOP`, `CFG` | UL mode. | `CFG=0x4C` |
+| **42** | `0x2A` | `0x54` | `LDi`, `0x5` | ACC=5. | |
+| **43** | `0x2B` | `0x9C` | `XMEM`, `0xC` | Store UL @RA1 (use AR=1, DIR=0, no post-inc). | `[RA1]=0x05` |
+| **44** | `0x2C` | `0x0C` | `XMEM`, `0x0` | Load UL @RA1 (still 0x0090). | `ACC=0x0005` |
+| **45** | `0x2D` | `0x8E` | `XMEM`, `0xE` | Store UL @RA1 with DIR=1 (decrement), AM=1. RA1 -> 0x008F. | `[0x0090]=0x05` |
+| **46** | `0x2E` | `0x0E` | `XMEM`, `0xE` | Load UL @RA1 (0x008F) to confirm DIR=dec. | |
+| **47** | `0x2F` | `0x18` | `XOP`, `CFG` | Enter LK16 (0x4E). | |
+| **48** | `0x30` | `0x4E` | `0xE`, `0x4` | CFG=0x4E. | |
+| **49** | `0x31` | `0x14` | `LDi`, `0x1` | ACC low word = 0x1234 after full imm sequence. | |
+| **50** | `0x32` | `0x22` | `0x2`, `0x2` | | |
+| **51** | `0x33` | `0x33` | `0x3`, `0x3` | | |
+| **52** | `0x34` | `0x44` | `0x4`, `0x4` | ACC=0x1234. | |
+| **53** | `0x35` | `0xCD` | `XMEM`, `0xD` | Store word @RA1 (post-inc, AR=1). | `[0x90]=0x34,[0x91]=0x12` |
+| **54** | `0x36` | `0x6D` | `XMEM`, `0x6` | Load word back (post-dec, AR=1) to confirm endianness. | `ACC=0x1234` |

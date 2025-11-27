@@ -49,7 +49,7 @@ module tb_alu;
     end
 
     // Validation task: wait for read of addr, check mem_data_in, then after cycles check ACC.
-    task automatic validate(input [14:0] addr, input integer cycles, input [15:0] expected_acc);
+    task automatic validate(input [14:0] addr, input integer cycles, input [15:0] expected_acc, input expected_carry);
         begin
             @(negedge clk);
             while (!(mem_enable_read && mem_addr == addr)) @(negedge clk);
@@ -60,6 +60,10 @@ module tb_alu;
             repeat (cycles) @(negedge clk);
             if (test_data !== expected_acc) begin
                 $display("FAIL ACC @%0d: got=%h exp=%h", addr, test_data, expected_acc);
+                $fatal(1);
+            end
+            if (test_carry !== expected_carry) begin
+                $display("FAIL CARRY @%0d: got=%b exp=%b", addr, test_carry, expected_carry);
                 $fatal(1);
             end
         end
@@ -123,6 +127,27 @@ module tb_alu;
         memory[37] = {NOP, 4'hF};    // imm2
         memory[38] = {ADD, NOP};     // ACC=0000, C=1
 
+        // Phase 5: DEC with CEN variations, SHL/SHR in LK8/LK16
+        memory[39] = {CFG, XOP};     // cfg 0x4C (UL, CEN=1)
+        memory[40] = {4'h4, 4'hC};
+        memory[41] = {4'h3, LDI};    // ACC=3
+        memory[42] = {DEC, XOP};     // ACC=2, C=0
+        memory[43] = {CFG, XOP};     // cfg 0x44 (UL, CEN=0)
+        memory[44] = {4'h4, 4'h4};
+        memory[45] = {DEC, XOP};     // ACC=1, C=1 (borrow)
+        // LK8 shifts
+        memory[46] = {CFG, XOP};
+        memory[47] = {4'h4, 4'hD};   // LK8
+        memory[48] = {4'hF, LDI};    // ACC=0x0F
+        memory[49] = {SHL, NOP};     // ACC=0x1E, C from bit7=0
+        memory[50] = {SHR, XOP};     // ACC=0x0F, C=0
+        // LK16 shifts
+        memory[51] = {CFG, XOP};
+        memory[52] = {4'h4, 4'hE};   // LK16
+        memory[53] = {4'h1, LDI};    // ACC=0x0001
+        memory[54] = {SHL, NOP};     // ACC=0x0002, C=0
+        memory[55] = {SHR, XOP};     // ACC=0x0001, C=0
+
         // ================================================================
         // Execution & Checks
         // ================================================================
@@ -130,26 +155,34 @@ module tb_alu;
         #50; rst = 0;
 
         // Phase 1
-        validate(15'h0007, 1, 16'h0008);
-        validate(15'h0008, 1, 16'h000D);
-        validate(15'h0009, 1, 16'h0002);
-        validate(15'h000A, 1, 16'h0002);
-        validate(15'h000B, 1, 16'h0003);
-        validate(15'h000C, 1, 16'h000E);
+        validate(15'h0007, 1, 16'h0008, 1'b0);
+        validate(15'h0008, 1, 16'h000D, 1'b0);
+        validate(15'h0009, 1, 16'h0002, 1'b1);
+        validate(15'h000A, 1, 16'h0002, 1'b0);
+        validate(15'h000B, 1, 16'h0003, 1'b0);
+        validate(15'h000C, 1, 16'h000E, 1'b1);
 
         // Phase 2
-        validate(15'h0010, 1, 16'h0008);
-        validate(15'h0011, 1, 16'h000C);
-        validate(15'h0012, 1, 16'h0000);
-        validate(15'h0013, 1, 16'h000F);
-        validate(15'h0014, 1, 16'h000E);
-        validate(15'h0015, 1, 16'h0007);
+        validate(15'h0010, 1, 16'h0008, 1'b0);
+        validate(15'h0011, 1, 16'h000C, 1'b0);
+        validate(15'h0012, 1, 16'h0000, 1'b0);
+        validate(15'h0013, 1, 16'h000F, 1'b1);
+        validate(15'h0014, 1, 16'h000E, 1'b1);
+        validate(15'h0015, 1, 16'h0007, 1'b0);
 
         // Phase 3
-        validate(15'h001D, 1, 16'h0000);
+        validate(15'h001D, 1, 16'h0000, 1'b1);
 
         // Phase 4
-        validate(15'h0027, 1, 16'h0000);
+        validate(15'h0027, 1, 16'h0000, 1'b1);
+
+        // Phase 5
+        validate(15'h0028, 1, 16'h0002, 1'b0); // DEC with CEN=1
+        validate(15'h002A, 1, 16'h0001, 1'b1); // DEC with CEN=0 (borrow)
+        validate(15'h002F, 1, 16'h001E, 1'b0); // LK8 SHL
+        validate(15'h0031, 1, 16'h000F, 1'b0); // LK8 SHR
+        validate(15'h0035, 1, 16'h0002, 1'b0); // LK16 SHL
+        validate(15'h0037, 1, 16'h0001, 1'b0); // LK16 SHR
 
         $display("ALL ALU TESTS (validations) DONE");
         $finish;

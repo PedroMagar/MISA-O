@@ -49,7 +49,7 @@ module tb_xmem;
     end
 
     // Validation
-    task automatic validate(input [14:0] addr, input integer cycles, input [15:0] expected_acc);
+    task automatic validate(input [14:0] addr, input integer cycles, input [15:0] expected_acc, input expected_carry);
         begin
             @(negedge clk);
             while (!(mem_enable_read && mem_addr == addr)) @(negedge clk);
@@ -60,6 +60,10 @@ module tb_xmem;
             repeat (cycles) @(negedge clk);
             if (test_data !== expected_acc) begin
                 $display("FAIL ACC @%0d: got=%h exp=%h", addr, test_data, expected_acc);
+                $fatal(1);
+            end
+            if (test_carry !== expected_carry) begin
+                $display("FAIL CARRY @%0d: got=%b exp=%b", addr, test_carry, expected_carry);
                 $fatal(1);
             end
         end
@@ -134,6 +138,24 @@ module tb_xmem;
         memory[39] = {4'h0, 4'h0};   // ACC=0
         memory[40] = {XMEM, 4'h6};   // load word @RA1, post-dec, AR=1
 
+        // Phase 5: Advanced XMEM (AR=RA1 in UL, DIR=dec in UL, store endianness)
+        memory[41] = {CFG, XOP};     // UL (default)
+        memory[42] = {4'h4, 4'hC};
+        memory[43] = {4'h5, LDI};    // ACC=5
+        memory[44] = {XMEM, 4'hC};   // Store UL @RA1 (AR=1, DIR=0, AM=0)
+        memory[45] = {XMEM, 4'h0};   // Load UL @RA1 (confirm)
+        memory[46] = {XMEM, 4'hE};   // Store UL @RA1 with DIR=1, AM=1 (post-dec)
+        memory[47] = {XMEM, 4'hE};   // Load UL @RA1 after dec
+        // Store-word endianness check in LK16
+        memory[48] = {CFG, XOP};
+        memory[49] = {4'h4, 4'hE};   // LK16
+        memory[50] = {4'h1, LDI};    // imm0
+        memory[51] = {4'h2, 4'h2};   // imm1/imm2
+        memory[52] = {4'h3, 4'h3};
+        memory[53] = {4'h4, 4'h4};   // ACC=0x1234
+        memory[54] = {XMEM, 4'hD};   // Store word @RA1 (post-inc, AR=1)
+        memory[55] = {XMEM, 4'h6};   // Load word back (post-dec, AR=1)
+
         // ================================================================
         // Execution & Checks
         // ================================================================
@@ -141,17 +163,24 @@ module tb_xmem;
         #50; rst = 0;
 
         // Phase 2
-        validate(15'h0013, 1, 16'h0003);
+        validate(15'h0013, 1, 16'h0003, 1'b0);
         check_mem_byte(8'h80, 8'h05);
         check_mem_byte(8'h81, 8'h03);
 
         // Phase 3
-        validate(15'h001D, 1, 16'h0000);
+        validate(15'h001D, 1, 16'h0000, 1'b0);
         check_mem_byte(8'h81, 8'h5B);
         check_mem_byte(8'h82, 8'h00);
 
         // Phase 4
-        validate(15'h0029, 1, 16'h1234);
+        validate(15'h0029, 1, 16'h1234, 1'b0);
+        check_mem_byte(8'h90, 8'h34);
+        check_mem_byte(8'h91, 8'h12);
+
+        // Phase 5
+        validate(15'h002A, 1, 16'h0005, 1'b0); // UL load via RA1
+        validate(15'h002F, 1, 16'h0005, 1'b0); // After DIR=dec load
+        validate(15'h0037, 1, 16'h1234, 1'b0); // LK16 reload
         check_mem_byte(8'h90, 8'h34);
         check_mem_byte(8'h91, 8'h12);
 

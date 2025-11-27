@@ -75,9 +75,9 @@ module tb_misao_global;
 
         // Parallel validators
         fork
-            validate(15'd1, 1, 16'h0005);   // UL LDI (last nibble @ pc3 -> mem_addr=1)
-            validate(15'd5, 1, 16'h00AB);   // LK8 LDI (last nibble @ pc10 -> mem_addr=5)
-            validate(15'd10, 1, 16'h1234);  // LK16 LDI (last nibble @ pc20 -> mem_addr=10)
+            validate(15'd1, 1, 16'h0005, 1'b0);   // UL LDI (last nibble @ pc3 -> mem_addr=1)
+            validate(15'd5, 1, 16'h00AB, 1'b0);   // LK8 LDI (last nibble @ pc10 -> mem_addr=5)
+            validate(15'd10, 1, 16'h1234, 1'b0);  // LK16 LDI (last nibble @ pc20 -> mem_addr=10)
         join_none
 
         #200;
@@ -86,7 +86,7 @@ module tb_misao_global;
     end
 
     // Parametric validation: wait for read of addr, check data, then check ACC after cycles
-    task automatic validate(input [14:0] addr, input integer cycles, input [3:0] expected);
+    task automatic validate(input [14:0] addr, input integer cycles, input [3:0] expected, input expected_carry);
         begin
             // Wait for desired address read
             @(negedge clk);
@@ -99,6 +99,10 @@ module tb_misao_global;
             repeat (cycles) @(negedge clk);
             if (test_data[3:0] !== expected) begin
                 $display("FAIL GLOBAL RESULT @%0d: ACC=%h exp_low=%h", addr, test_data, expected);
+                $fatal(1);
+            end
+            if (test_carry !== expected_carry) begin
+                $display("FAIL CARRY @%0d: got=%b exp=%b", addr, test_carry, expected_carry);
                 $fatal(1);
             end
         end

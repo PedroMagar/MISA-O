@@ -49,7 +49,7 @@ module tb_control;
     end
 
     // Validation task
-    task automatic validate(input [14:0] addr, input integer cycles, input [15:0] expected_acc);
+    task automatic validate(input [14:0] addr, input integer cycles, input [15:0] expected_acc, input expected_carry);
         begin
             @(negedge clk);
             while (!(mem_enable_read && mem_addr == addr)) @(negedge clk);
@@ -60,6 +60,10 @@ module tb_control;
             repeat (cycles) @(negedge clk);
             if (test_data !== expected_acc) begin
                 $display("FAIL ACC @%0d: got=%h exp=%h", addr, test_data, expected_acc);
+                $fatal(1);
+            end
+            if (test_carry !== expected_carry) begin
+                $display("FAIL CARRY @%0d: got=%b exp=%b", addr, test_carry, expected_carry);
                 $fatal(1);
             end
         end
@@ -122,17 +126,28 @@ module tb_control;
         memory[41] = {RSA, XOP};
         memory[42] = {SA , XOP};   // ACC should end 0x23
 
+        // Phase 5: Advanced branches (BW/BRS, negative offset, BC not taken)
+        memory[43] = {CFG, XOP};
+        memory[44] = {4'h4, 4'h8};  // CFG=0x48 (BW=imm4, BRS=1)
+        memory[45] = {4'h0, LDI};   // ACC=0
+        memory[46] = {BEQZ, 4'hF};  // BEQZ with imm4=F (negative) scaled by BRS
+        memory[47] = {XOP, 4'h0};   // XOP prefix
+        memory[48] = {BC, 4'h2};    // BC not taken (C=0)
+        memory[49] = {4'h1, LDI};   // Execute sequentially to prove non-taken
+
         // ================================================================
         // Execution & Checks
         // ================================================================
         
         #50; rst = 0;
 
-        validate(15'h0007, 1, 16'h0001);
-        validate(15'h0009, 1, 16'h0002);
-        validate(15'h0014, 1, 16'h0005);
-        validate(15'h001E, 1, 16'h0005);
-        validate(15'h002A, 1, 16'h0023);
+        validate(15'h0007, 1, 16'h0001, 1'b0);
+        validate(15'h0009, 1, 16'h0002, 1'b0);
+        validate(15'h0014, 1, 16'h0005, 1'b1);
+        validate(15'h001E, 1, 16'h0005, 1'b0);
+        validate(15'h002A, 1, 16'h0023, 1'b0);
+        validate(15'h002C, 1, 16'h0000, 1'b0); // after negative branch taken, back-loop (ACC stays 0)
+        validate(15'h0031, 1, 16'h0001, 1'b0); // after BC not taken, ACC=1
 
         $display("CONTROL TEST DONE (validations)");
         $finish;

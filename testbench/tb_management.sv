@@ -49,7 +49,7 @@ module tb_management;
     end
 
     // Validation task
-    task automatic validate(input [14:0] addr, input integer cycles, input [15:0] expected_acc);
+    task automatic validate(input [14:0] addr, input integer cycles, input [15:0] expected_acc, input expected_carry);
         begin
             @(negedge clk);
             while (!(mem_enable_read && mem_addr == addr)) @(negedge clk);
@@ -60,6 +60,10 @@ module tb_management;
             repeat (cycles) @(negedge clk);
             if (test_data !== expected_acc) begin
                 $display("FAIL ACC @%0d: got=%h exp=%h", addr, test_data, expected_acc);
+                $fatal(1);
+            end
+            if (test_carry !== expected_carry) begin
+                $display("FAIL CARRY @%0d: got=%b exp=%b", addr, test_carry, expected_carry);
                 $fatal(1);
             end
         end
@@ -135,17 +139,26 @@ module tb_management;
         memory[45] = {RRS, XOP};
         memory[46] = {SS , NOP};
 
+        // Phase 7: RRS NOP in LK16
+        memory[47] = {CFG, XOP};
+        memory[48] = {4'h4, 4'hE}; // LK16
+        memory[49] = {4'h5, LDI};  // ACC=0x0005
+        memory[50] = {SS , NOP};   // RS0=0x0005
+        memory[51] = {RRS, XOP};   // Should be NOP
+        memory[52] = {SS , NOP};   // ACC should remain 0x0005
+
         // ================================================================
         // Execution & Checks
         // ================================================================
         
         #50; rst = 0;
 
-        validate(15'h000C, 1, 16'hAAA1);
-        validate(15'h000F, 1, 16'hAAA1);
-        validate(15'h001C, 1, 16'hBBBB);
-        validate(15'h0027, 1, 16'h1111);
-        validate(15'h002F, 1, 16'h0000);
+        validate(15'h000C, 1, 16'hAAA1, 1'b0);
+        validate(15'h000F, 1, 16'hAAA1, 1'b0);
+        validate(15'h001C, 1, 16'hBBBB, 1'b0);
+        validate(15'h0027, 1, 16'h1111, 1'b0);
+        validate(15'h002F, 1, 16'h0000, 1'b0);
+        validate(15'h0034, 1, 16'h0005, 1'b0);
 
         $display("MANAGEMENT TEST DONE (validations)");
         $finish;
