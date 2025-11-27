@@ -66,6 +66,7 @@ module tb_alu;
                 $display("FAIL CARRY @%0d: got=%b exp=%b", addr, test_carry, expected_carry);
                 $fatal(1);
             end
+            $display("SUCCESS AT @%0d: got=%b exp=%b", addr, {test_carry, test_data}, {expected_carry,expected_acc});
         end
     endtask
 
@@ -82,22 +83,22 @@ module tb_alu;
         // ================================================================
 
         // Phase 1: UL arithmetic
-        memory[1]  = {CFG, XOP};
-        memory[2]  = {4'h4, 4'hC};   // imm 0x4C (UL, CEN=1)
-        memory[3]  = {4'h5, LDI};    // LDI 5
+        memory[1]  = {CFG, XOP};     // XOP CFG
+        memory[2]  = {4'h4, 4'hC};   // cfg=0x4C (UL, CEN=1)
+        memory[3]  = {4'h5, LDI};    // ACC=5
         memory[4]  = {SS , NOP};     // RS0=5
-        memory[5]  = {4'h3, LDI};    // LDI 3
-        memory[6]  = {ADD, NOP};     // ACC=8
-        memory[7]  = {ADD, NOP};     // ACC=D
-        memory[8]  = {ADD, NOP};     // ACC=2, C=1
+        memory[5]  = {4'h3, LDI};    // ACC=3
+        memory[6]  = {ADD, NOP};     // ACC=8, C=0
+        memory[7]  = {ADD, NOP};     // ACC=D, C=0
+        memory[8]  = {ADD, NOP};     // ACC=2 (overflow), C=1
         memory[9]  = {CC , NOP};     // C=0
         memory[10] = {INC, NOP};     // ACC=3
-        memory[11] = {SUB, XOP};     // SUB (ACC=E, C=1)
+        memory[11] = {SUB, XOP};     // ACC=E, C=1 (borrow)
 
         // Phase 2: UL logic & shifts
-        memory[12] = {4'hC, LDI};    // LDI C
+        memory[12] = {4'hC, LDI};    // ACC=C
         memory[13] = {SS , NOP};     // RS0=C
-        memory[14] = {4'hA, LDI};    // LDI A
+        memory[14] = {4'hA, LDI};    // ACC=A
         memory[15] = {AND, NOP};     // ACC=8
         memory[16] = {OR , NOP};     // ACC=C
         memory[17] = {XOR, XOP};     // ACC=0
@@ -106,26 +107,26 @@ module tb_alu;
         memory[20] = {SHR, XOP};     // ACC=7, C=0
 
         // Phase 3: LK8 arithmetic
-        memory[21] = {CFG, XOP};
-        memory[22] = {4'h4, 4'hD};   // imm 0x4D (LK8)
-        memory[23] = {4'h1, LDI};    // LDI 1
-        memory[24] = {NOP, 4'h0};    // NOP (ACC=01)
-        memory[25] = {SS , NOP};     // RS0=01
-        memory[26] = {4'hF, LDI};    // LDI F
-        memory[27] = {NOP, 4'hF};    // NOP (ACC=FF)
-        memory[28] = {ADD, NOP};     // ACC=00, C=1
+        memory[21] = {CFG, XOP};     // XOP CFG
+        memory[22] = {4'h4, 4'hD};   // cfg=0x4D (LK8)
+        memory[23] = {4'h1, LDI};    // ACC=0x01
+        memory[24] = {NOP, 4'h0};    // NOP
+        memory[25] = {SS , NOP};     // RS0=0x01
+        memory[26] = {4'hF, LDI};    // ACC=0x0F
+        memory[27] = {NOP, 4'hF};    // ACC=0xFF
+        memory[28] = {ADD, NOP};     // ACC=0x00, C=1
 
         // Phase 4: LK16 arithmetic
-        memory[29] = {CFG, XOP};
-        memory[30] = {4'h4, 4'hE};   // imm 0x4E (LK16)
-        memory[31] = {4'h1, LDI};    // LDI 1
-        memory[32] = {4'h0, 4'h0};   // imm1
-        memory[33] = {NOP, 4'h0};    // NOP (ACC=0001)
-        memory[34] = {SS , NOP};     // RS0=0001
-        memory[35] = {4'hF, LDI};    // LDI F
-        memory[36] = {4'hF, 4'hF};   // imm1
-        memory[37] = {NOP, 4'hF};    // imm2
-        memory[38] = {ADD, NOP};     // ACC=0000, C=1
+        memory[29] = {CFG, XOP};     // XOP CFG
+        memory[30] = {4'h4, 4'hE};   // cfg=0x4E (LK16)
+        memory[31] = {4'h1, LDI};    // ACC=0x0001
+        memory[32] = {4'h0, 4'h0};   // imm1/imm2
+        memory[33] = {NOP, 4'h0};    // ACC=0x0001
+        memory[34] = {SS , NOP};     // RS0=0x0001
+        memory[35] = {4'hF, LDI};    // ACC=0x000F
+        memory[36] = {4'hF, 4'hF};   // imm1/imm2
+        memory[37] = {NOP, 4'hF};    // ACC=0xFFFF
+        memory[38] = {ADD, NOP};     // ACC=0x0000, C=1
 
         // Phase 5: DEC with CEN variations, SHL/SHR in LK8/LK16
         memory[39] = {CFG, XOP};     // cfg 0x4C (UL, CEN=1)
@@ -155,34 +156,50 @@ module tb_alu;
         #50; rst = 0;
 
         // Phase 1
-        validate(15'h0007, 1, 16'h0008, 1'b0);
-        validate(15'h0008, 1, 16'h000D, 1'b0);
-        validate(15'h0009, 1, 16'h0002, 1'b1);
-        validate(15'h000A, 1, 16'h0002, 1'b0);
-        validate(15'h000B, 1, 16'h0003, 1'b0);
-        validate(15'h000C, 1, 16'h000E, 1'b1);
+        validate(3, 1, 16'h0005, 1'b0); // LDI 5
+        validate(4, 1, 16'h0000, 1'b0); // SS -> ACC=0, RS0=5
+        validate(5, 1, 16'h0003, 1'b0); // LDI 3
+        validate(6, 1, 16'h0008, 1'b0); // ADD -> 8
+        validate(7, 1, 16'h000D, 1'b0); // ADD -> D
+        validate(8, 1, 16'h0002, 1'b1); // ADD -> 2, C=1
+        validate(9, 1, 16'h0002, 1'b0); // CC -> C=0
+        validate(10, 1, 16'h0003, 1'b0); // INC -> 3
+        validate(11, 1, 16'h000E, 1'b1); // SUB -> E, C=1
 
         // Phase 2
-        validate(15'h0010, 1, 16'h0008, 1'b0);
-        validate(15'h0011, 1, 16'h000C, 1'b0);
-        validate(15'h0012, 1, 16'h0000, 1'b0);
-        validate(15'h0013, 1, 16'h000F, 1'b1);
-        validate(15'h0014, 1, 16'h000E, 1'b1);
-        validate(15'h0015, 1, 16'h0007, 1'b0);
+        validate(12, 1, 16'h000C, 1'b1); // LDI C (carry unchanged)
+        validate(13, 1, 16'h0005, 1'b1); // SS -> ACC=5, RS0=C
+        validate(14, 1, 16'h000A, 1'b1); // LDI A
+        validate(15, 1, 16'h0008, 1'b0); // AND -> 8
+        validate(16, 1, 16'h000C, 1'b0); // OR  -> C
+        validate(17, 1, 16'h0000, 1'b0); // XOR -> 0
+        validate(18, 1, 16'h000F, 1'b1); // INV -> F (carry set by INV)
+        validate(19, 1, 16'h000E, 1'b1); // SHL -> E, C=1
+        validate(20, 1, 16'h0007, 1'b0); // SHR -> 7, C=0
 
-        // Phase 3
-        validate(15'h001D, 1, 16'h0000, 1'b1);
+        // Phase 3 (LK8)
+        validate(23, 1, 16'h0001, 1'b0); // LDI 0x01
+        validate(25, 1, 16'h000C, 1'b0); // SS -> ACC=0x0C, RS0=1
+        validate(26, 1, 16'h000F, 1'b0); // LDI 0x0F
+        validate(27, 1, 16'h00FF, 1'b0); // extend to 0xFF
+        validate(28, 1, 16'h0000, 1'b1); // ADD RS0=1 -> 0x00, C=1
 
-        // Phase 4
-        validate(15'h0027, 1, 16'h0000, 1'b1);
+        // Phase 4 (LK16)
+        validate(33, 1, 16'h0001, 1'b1); // LDI 0x0001
+        validate(34, 1, 16'h0001, 1'b1); // SS keeps ACC=1, RS0=1
+        validate(37, 1, 16'hFFFF, 1'b1); // LDI 0xFFFF
+        validate(38, 1, 16'h0000, 1'b1); // ADD RS0=1 -> 0, C=1
 
         // Phase 5
-        validate(15'h0028, 1, 16'h0002, 1'b0); // DEC with CEN=1
-        validate(15'h002A, 1, 16'h0001, 1'b1); // DEC with CEN=0 (borrow)
-        validate(15'h002F, 1, 16'h001E, 1'b0); // LK8 SHL
-        validate(15'h0031, 1, 16'h000F, 1'b0); // LK8 SHR
-        validate(15'h0035, 1, 16'h0002, 1'b0); // LK16 SHL
-        validate(15'h0037, 1, 16'h0001, 1'b0); // LK16 SHR
+        validate(41, 1, 16'h0003, 1'b1); // LDI 3
+        validate(42, 1, 16'h0002, 1'b0); // DEC with CEN=1
+        validate(45, 1, 16'h0001, 1'b1); // DEC with CEN=0 (borrow sets C)
+        validate(48, 1, 16'h000F, 1'b1); // LK8 LDI 0x0F
+        validate(49, 1, 16'h001E, 1'b0); // LK8 SHL
+        validate(50, 1, 16'h000F, 1'b0); // LK8 SHR
+        validate(53, 1, 16'h0001, 1'b0); // LK16 LDI 0x0001
+        validate(54, 1, 16'h0002, 1'b0); // LK16 SHL
+        validate(55, 1, 16'h0001, 1'b0); // LK16 SHR
 
         $display("ALL ALU TESTS (validations) DONE");
         $finish;

@@ -66,6 +66,7 @@ module tb_control;
                 $display("FAIL CARRY @%0d: got=%b exp=%b", addr, test_carry, expected_carry);
                 $fatal(1);
             end
+            $display("SUCCESS AT @%0d: got=%b exp=%b", addr, {test_carry, test_data}, {expected_carry,expected_acc});
         end
     endtask
 
@@ -82,49 +83,49 @@ module tb_control;
         // ================================================================
 
         // Phase 1: Conditional branches (UL)
-        memory[1]  = {CFG, XOP};
-        memory[2]  = {4'h4, 4'hC}; // cfg UL
-        memory[3]  = {4'h0, LDI};  // ACC=0
-        memory[4]  = {4'h2, BEQZ}; // BEQZ +2 (taken)
-        memory[5]  = {4'hF, LDI};  // skipped
-        memory[6]  = {4'hF, LDI};  // skipped
-        memory[7]  = {4'h1, LDI};  // ACC=1
-        memory[8]  = {4'h2, BEQZ}; // not taken
-        memory[9]  = {4'h2, LDI};  // ACC=2
+        memory[1]  = {CFG, XOP};    // XOP CFG
+        memory[2]  = {4'h4, 4'hC};  // cfg=0x4C (UL)
+        memory[3]  = {4'h0, LDI};   // ACC=0
+        memory[4]  = {4'h2, BEQZ};  // BEQZ +2 (taken)
+        memory[5]  = {4'hF, LDI};   // skipped
+        memory[6]  = {4'hF, LDI};   // skipped
+        memory[7]  = {4'h1, LDI};   // ACC=1
+        memory[8]  = {4'h2, BEQZ};  // not taken
+        memory[9]  = {4'h2, LDI};   // ACC=2
 
         // Phase 2: BTST + BC
-        memory[10] = {4'h3, LDI};  // ACC=3
-        memory[11] = {4'h0, LDI};  // ACC=0
-        memory[12] = {4'h1, LDI};  // ACC=1
-        memory[13] = {SS , NOP};   // RS0=1
-        memory[14] = {4'h3, LDI};  // ACC=3
-        memory[15] = {BTST, 4'h1}; // BTST imm1 (C=1)
-        memory[16] = {XOP, 4'h0};  // XOP prefix
-        memory[17] = {4'h2, BC};   // BC +2 (taken)
-        memory[18] = {4'hF, LDI};  // skipped
-        memory[19] = {4'hF, LDI};  // skipped
-        memory[20] = {4'h5, LDI};  // ACC=5
+        memory[10] = {4'h3, LDI};   // ACC=3
+        memory[11] = {4'h0, LDI};   // ACC=0
+        memory[12] = {4'h1, LDI};   // ACC=1
+        memory[13] = {SS , NOP};    // RS0=1
+        memory[14] = {4'h3, LDI};   // ACC=3
+        memory[15] = {BTST, 4'h1};  // C = ACC[RS0]=1
+        memory[16] = {XOP, 4'h0};   // XOP prefix
+        memory[17] = {4'h2, BC};    // BC taken +2 -> skip next two LDIs
+        memory[18] = {4'hF, LDI};   // skipped
+        memory[19] = {4'hF, LDI};   // skipped
+        memory[20] = {4'h5, LDI};   // ACC=5
 
         // Phase 3: JMP via RA0
-        memory[21] = {4'hE, LDI};  // ACC=E
-        memory[22] = {4'h1, LDI};  // ACC=1E
-        memory[23] = {SA , XOP};   // RA0=1E
-        memory[24] = {XOP, 4'h0};  // XOP
-        memory[25] = {JMP, 4'h0};  // JMP RA0
-        memory[26] = {4'hF, 4'hF}; // skipped fillers
-        memory[27] = {4'hF, 4'hF};
-        memory[28] = {4'hF, 4'hF};
-        memory[29] = {4'hF, 4'hF};
-        memory[30] = {4'h5, LDI};  // target ACC=5
+        memory[21] = {4'hE, LDI};   // ACC=E
+        memory[22] = {4'h1, LDI};   // ACC=1E
+        memory[23] = {SA , XOP};    // RA0=0x001E
+        memory[24] = {XOP, 4'h0};   // XOP
+        memory[25] = {JMP, 4'h0};   // JMP RA0
+        memory[26] = {4'hF, 4'hF};  // filler
+        memory[27] = {4'hF, 4'hF};  // filler
+        memory[28] = {4'hF, 4'hF};  // filler
+        memory[29] = {4'hF, 4'hF};  // filler
+        memory[30] = {4'h5, LDI};   // target ACC=5
 
         // Phase 4: JAL to RA0=0x0028
-        memory[31] = {4'h8, LDI};  // ACC=8
-        memory[32] = {4'h2, LDI};  // ACC=28
-        memory[33] = {SA , XOP};   // RA0=28
-        memory[34] = {JAL, 4'h0};  // JAL -> RA1=next
-        memory[40] = {SA , XOP};
-        memory[41] = {RSA, XOP};
-        memory[42] = {SA , XOP};   // ACC should end 0x23
+        memory[31] = {4'h8, LDI};   // ACC=8
+        memory[32] = {4'h2, LDI};   // ACC=0x28
+        memory[33] = {SA , XOP};    // RA0=0x0028
+        memory[34] = {JAL, 4'h0};   // JAL -> jump RA0, link RA1
+        memory[40] = {SA , XOP};    // at target: swap ACC/RA0
+        memory[41] = {RSA, XOP};    // swap RA0/RA1
+        memory[42] = {SA , XOP};    // ACC should end 0x0023
 
         // Phase 5: Advanced branches (BW/BRS, negative offset, BC not taken)
         memory[43] = {CFG, XOP};
@@ -141,13 +142,36 @@ module tb_control;
         
         #50; rst = 0;
 
-        validate(15'h0007, 1, 16'h0001, 1'b0);
-        validate(15'h0009, 1, 16'h0002, 1'b0);
-        validate(15'h0014, 1, 16'h0005, 1'b1);
-        validate(15'h001E, 1, 16'h0005, 1'b0);
-        validate(15'h002A, 1, 16'h0023, 1'b0);
-        validate(15'h002C, 1, 16'h0000, 1'b0); // after negative branch taken, back-loop (ACC stays 0)
-        validate(15'h0031, 1, 16'h0001, 1'b0); // after BC not taken, ACC=1
+        // Phase 1 (UL branches)
+        validate(3, 1, 16'h0000, 1'b0); // LDI 0
+        validate(7, 1, 16'h0001, 1'b0); // LDI 1 after taken BEQZ
+        validate(9, 1, 16'h0002, 1'b0); // LDI 2 (BEQZ not taken)
+
+        // Phase 2 (BTST / BC)
+        validate(10, 1, 16'h0003, 1'b0); // LDI 3
+        validate(11, 1, 16'h0000, 1'b0); // LDI 0
+        validate(12, 1, 16'h0001, 1'b0); // LDI 1
+        validate(13, 1, 16'h0000, 1'b0); // SS -> ACC=0, RS0=1
+        validate(14, 1, 16'h0003, 1'b0); // LDI 3
+        validate(15, 1, 16'h0003, 1'b1); // BTST sets C=ACC[RS0]=1
+        validate(20, 1, 16'h0005, 1'b1); // LDI 5 after BC taken
+
+        // Phase 3 (JMP via RA0)
+        validate(21, 1, 16'h000E, 1'b1); // LDI E
+        validate(22, 1, 16'h001E, 1'b1); // LDI -> ACC=0x001E
+        validate(23, 1, 16'h0000, 1'b1); // SA -> ACC swap with RA0 (0)
+        validate(30, 1, 16'h0005, 1'b1); // target of JMP, ACC=5
+
+        // Phase 4 (JAL)
+        validate(31, 1, 16'h0008, 1'b1); // LDI 8
+        validate(32, 1, 16'h0028, 1'b1); // LDI -> ACC=0x0028
+        validate(33, 1, 16'h001E, 1'b1); // SA -> ACC=old RA0=0x001E
+        validate(42, 1, 16'h0023, 1'b0); // final after JAL sequence
+
+        // Phase 5 (advanced branches)
+        validate(45, 1, 16'h0000, 1'b0); // LDI 0 before negative BEQZ
+        validate(44, 1, 16'h0000, 1'b0); // after negative branch loop, ACC stays 0
+        validate(49, 1, 16'h0001, 1'b0); // BC not taken, ACC=1
 
         $display("CONTROL TEST DONE (validations)");
         $finish;
