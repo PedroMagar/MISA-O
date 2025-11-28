@@ -1,0 +1,51 @@
+[*]
+[*] GTKWave Analyzer v3.3.100 (w)1999-2019 BSI
+[*] Thu Nov 27 15:18:40 2025
+[*]
+[dumpfile] "D:\Projetos\misa-o\run\waves_management.vcd"
+[savefile] "D:\Projetos\misa-o\run\misao_debug.gtkw"
+[timestart] 180310
+[size] 1453 600
+[pos] 2060 40
+*-14.000000 205000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] tb_misao.
+[sst_width] 197
+[signals_width] 166
+[sst_expanded] 1
+[sst_vpaned_height] 153
+@29
+tb_misao.rst
+@28
+tb_misao.clk
+@22
+tb_misao.mem_addr[14:0]
+@800022
+tb_misao.mem_data_in[7:0]
+@c00028
+[color] 2
++{Lower Nibble} #{tb_misao.mem_data_in[3:0]} (4)tb_misao.mem_data_in[7:0] (5)tb_misao.mem_data_in[7:0] (6)tb_misao.mem_data_in[7:0] (7)tb_misao.mem_data_in[7:0]
+@28
+(4)tb_misao.mem_data_in[7:0]
+(5)tb_misao.mem_data_in[7:0]
+(6)tb_misao.mem_data_in[7:0]
+(7)tb_misao.mem_data_in[7:0]
+@1401208
+-group_end
+@c00028
+[color] 2
++{Higher Nibble} #{tb_misao.mem_data_in[7:4]} (0)tb_misao.mem_data_in[7:0] (1)tb_misao.mem_data_in[7:0] (2)tb_misao.mem_data_in[7:0] (3)tb_misao.mem_data_in[7:0]
+@28
+(0)tb_misao.mem_data_in[7:0]
+(1)tb_misao.mem_data_in[7:0]
+(2)tb_misao.mem_data_in[7:0]
+(3)tb_misao.mem_data_in[7:0]
+@1401208
+-group_end
+@1001202
+-group_end
+@22
+tb_misao.test_data[15:0]
+@28
+tb_misao.dut.cfg_snapshot[7:0]
+[pattern_trace] 1
+[pattern_trace] 0
