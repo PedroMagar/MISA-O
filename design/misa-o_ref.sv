@@ -21,6 +21,12 @@ module misao (
     localparam [4:0] LDI  = 5'b00100;
     localparam [4:0] XOP  = 5'b01000;
     localparam [4:0] CFG  = 5'b10001;
+    localparam [4:0] SS   = 5'b01110;
+    localparam [4:0] SA   = 5'b11110;
+    localparam [4:0] RSS  = 5'b01010;
+    localparam [4:0] RSA  = 5'b11010;
+    localparam [4:0] RRS  = 5'b10110;
+    localparam [4:0] RACC = 5'b00110;
 
     // Registers
     reg [15:0] pc;                   // Nibble-addressed PC
@@ -51,7 +57,8 @@ module misao (
     reg [1:0]  cfg_index;
     reg [7:0]  cfg_shift;
 
-    wire [3:0] current_nibble = pc[0] ? mem_data_in[7:4] : mem_data_in[3:0];
+    wire [3:0] current_nibble = (pc == 16'h0001) ? mem_data_in[3:0] :
+                                pc[0] ? mem_data_in[7:4] : mem_data_in[3:0];
     wire [4:0] instruction    = {flag_xop, current_nibble};
     wire [7:0] cfg_snapshot   = {1'b0, flag_bw, flag_brs, flag_ie, flag_cen, flag_sign, link_state};
 
@@ -67,12 +74,12 @@ module misao (
     // mem_addr is registered on negedge to avoid posedge timing pressure
     always @(negedge clk or posedge rst) begin
         if (rst) mem_addr <= 15'h0;
-        else     mem_addr <= pc[15:1];
+        else     mem_addr <= (pc == 16'h0001) ? 15'h1 : pc[15:1];
     end
 
     always @(posedge clk or posedge rst) begin
         if (rst) begin
-            pc               <= 16'h0001;
+            pc               <= 16'h0002;
             flag_xop         <= 1'b0;
             flag_bw          <= 1'b1; // imm8 by default
             flag_brs         <= 1'b0;
@@ -171,6 +178,91 @@ module misao (
                                          (link_state == LK8) ? 3'd2 : 3'd4;
                         pc            <= pc + 1'b1;
                         flag_xop      <= 1'b0;
+                    end
+                    SS: begin
+                        // Swap ACC <-> RS0 respecting link width
+                        reg [15:0] acc_val;
+                        reg [15:0] rs0_val;
+                        acc_val = {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]};
+                        rs0_val = bank_src[0];
+                        case (link_state)
+                            UL: begin
+                                bank_acc[0] <= rs0_val[3:0];
+                                bank_src[0][3:0] <= acc_val[3:0];
+                            end
+                            LK8: begin
+                                bank_acc[0] <= rs0_val[3:0];
+                                bank_acc[1] <= rs0_val[7:4];
+                                bank_src[0][7:0] <= acc_val[7:0];
+                            end
+                            default: begin
+                                bank_acc[0] <= rs0_val[3:0];
+                                bank_acc[1] <= rs0_val[7:4];
+                                bank_acc[2] <= rs0_val[11:8];
+                                bank_acc[3] <= rs0_val[15:12];
+                                bank_src[0] <= acc_val;
+                            end
+                        endcase
+                        pc       <= pc + 1'b1;
+                        flag_xop <= 1'b0;
+                    end
+                    SA: begin
+                        // Swap ACC (always 16b) <-> RA0
+                        reg [15:0] acc_val;
+                        acc_val       = {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]};
+                        bank_acc[0]   <= bank_adr[0][3:0];
+                        bank_acc[1]   <= bank_adr[0][7:4];
+                        bank_acc[2]   <= bank_adr[0][11:8];
+                        bank_acc[3]   <= bank_adr[0][15:12];
+                        bank_adr[0]   <= acc_val;
+                        pc            <= pc + 1'b1;
+                        flag_xop      <= 1'b0;
+                    end
+                    RSS: begin
+                        // Rotate RS stack (swap rs0<->rs1)
+                        reg [15:0] tmp_rs;
+                        tmp_rs      = bank_src[0];
+                        bank_src[0] <= bank_src[1];
+                        bank_src[1] <= tmp_rs;
+                        pc          <= pc + 1'b1;
+                        flag_xop    <= 1'b0;
+                    end
+                    RSA: begin
+                        // Rotate RA stack (swap ra0<->ra1)
+                        reg [15:0] tmp_ra;
+                        tmp_ra      = bank_adr[0];
+                        bank_adr[0] <= bank_adr[1];
+                        bank_adr[1] <= tmp_ra;
+                        pc          <= pc + 1'b1;
+                        flag_xop    <= 1'b0;
+                    end
+                    RRS: begin
+                        // Rotate/shift RS0 by width; LK16 acts as NOP
+                        if (link_state == UL) begin
+                            bank_src[0] <= {bank_src[0][3:0], bank_src[0][15:4]};
+                        end else if (link_state == LK8) begin
+                            bank_src[0] <= {bank_src[0][7:0], bank_src[0][15:8]};
+                        end
+                        pc       <= pc + 1'b1;
+                        flag_xop <= 1'b0;
+                    end
+                    RACC: begin
+                        // Rotate ACC by width; LK16 acts as NOP
+                        reg [15:0] acc_val;
+                        acc_val = {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]};
+                        if (link_state == UL) begin
+                            acc_val = {acc_val[3:0], acc_val[15:4]};
+                        end else if (link_state == LK8) begin
+                            acc_val = {acc_val[7:0], acc_val[15:8]};
+                        end
+                        if (link_state != LK16) begin
+                            bank_acc[0] <= acc_val[3:0];
+                            bank_acc[1] <= acc_val[7:4];
+                            bank_acc[2] <= acc_val[11:8];
+                            bank_acc[3] <= acc_val[15:12];
+                        end
+                        pc       <= pc + 1'b1;
+                        flag_xop <= 1'b0;
                     end
                     default: begin
                         pc       <= pc + 1'b1; // NOP or unimplemented
