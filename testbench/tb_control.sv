@@ -143,35 +143,35 @@ module tb_control;
         #50; rst = 0;
 
         // Phase 1 (UL branches)
-        validate(3, 1, 16'h0000, 1'b0); // LDI 0
-        validate(7, 1, 16'h0001, 1'b0); // LDI 1 after taken BEQZ
-        validate(9, 1, 16'h0002, 1'b0); // LDI 2 (BEQZ not taken)
+        validate(3, 1, 16'h0000, 1'b0); // LDI -> ACC=0 (sets up BEQZ taken)
+        validate(7, 1, 16'h0001, 1'b0); // LDI -> ACC=1 (after BEQZ jump)
+        validate(9, 1, 16'h0002, 1'b0); // LDI -> ACC=2 (BEQZ not taken)
 
         // Phase 2 (BTST / BC)
-        validate(10, 1, 16'h0003, 1'b0); // LDI 3
-        validate(11, 1, 16'h0000, 1'b0); // LDI 0
-        validate(12, 1, 16'h0001, 1'b0); // LDI 1
-        validate(13, 1, 16'h0000, 1'b0); // SS -> ACC=0, RS0=1
-        validate(14, 1, 16'h0003, 1'b0); // LDI 3
-        validate(15, 1, 16'h0003, 1'b1); // BTST sets C=ACC[RS0]=1
-        validate(20, 1, 16'h0005, 1'b1); // LDI 5 after BC taken
+        validate(10,1, 16'h0003, 1'b0); // LDI -> ACC=3
+        validate(11,1, 16'h0000, 1'b0); // LDI -> ACC=0
+        validate(12,1, 16'h0001, 1'b0); // LDI -> ACC=1
+        validate(13,1, 16'h0000, 1'b0); // SS  -> ACC=0, RS0=1
+        validate(14,1, 16'h0003, 1'b0); // LDI -> ACC=3
+        validate(15,1, 16'h0003, 1'b1); // BTST-> ACC=3, C=ACC[RS0]=1
+        validate(20,1, 16'h0005, 1'b1); // LDI -> ACC=5 (after BC taken)
 
         // Phase 3 (JMP via RA0)
-        validate(21, 1, 16'h000E, 1'b1); // LDI E
-        validate(22, 1, 16'h001E, 1'b1); // LDI -> ACC=0x001E
-        validate(23, 1, 16'h0000, 1'b1); // SA -> ACC swap with RA0 (0)
-        validate(30, 1, 16'h0005, 1'b1); // target of JMP, ACC=5
+        validate(21,1, 16'h000E, 1'b1); // LDI -> ACC=0x000E
+        validate(22,1, 16'h001E, 1'b1); // LDI -> ACC=0x001E
+        validate(23,1, 16'h0000, 1'b1); // SA  -> ACC swap with RA0 (ACC=0)
+        validate(30,1, 16'h0005, 1'b1); // JMP target -> ACC=5
 
         // Phase 4 (JAL)
-        validate(31, 1, 16'h0008, 1'b1); // LDI 8
-        validate(32, 1, 16'h0028, 1'b1); // LDI -> ACC=0x0028
-        validate(33, 1, 16'h001E, 1'b1); // SA -> ACC=old RA0=0x001E
-        validate(42, 1, 16'h0023, 1'b0); // final after JAL sequence
+        validate(31,1, 16'h0008, 1'b1); // LDI -> ACC=0x0008
+        validate(32,1, 16'h0028, 1'b1); // LDI -> ACC=0x0028
+        validate(33,1, 16'h001E, 1'b1); // SA  -> ACC=old RA0=0x001E
+        validate(42,1, 16'h0023, 1'b0); // after JAL sequence -> ACC=0x0023
 
         // Phase 5 (advanced branches)
-        validate(45, 1, 16'h0000, 1'b0); // LDI 0 before negative BEQZ
-        validate(44, 1, 16'h0000, 1'b0); // after negative branch loop, ACC stays 0
-        validate(49, 1, 16'h0001, 1'b0); // BC not taken, ACC=1
+        validate(45,1, 16'h0000, 1'b0); // LDI -> ACC=0 before negative BEQZ
+        validate(44,1, 16'h0000, 1'b0); // BEQZ negative jump -> ACC stays 0
+        validate(49,1, 16'h0001, 1'b0); // BC not taken -> ACC=1
 
         $display("CONTROL TEST DONE (validations)");
         $finish;

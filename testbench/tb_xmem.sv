@@ -163,37 +163,37 @@ module tb_xmem;
         #50; rst = 0;
 
         // Phase 1 (initial LDIs to set RA0/RA1) - ACC loads
-        validate(5, 1, 16'h0080, 1'b0);  // after LDI 0x0080
-        validate(9, 1, 16'h0090, 1'b0);  // after LDI 0x0090
+        validate(5, 1, 16'h0080, 1'b0);  // LDI 0x0080 -> ACC=0x0080
+        validate(9, 1, 16'h0090, 1'b0);  // LDI 0x0090 -> ACC=0x0090
 
         // Phase 2 (UL nibble ops)
-        validate(14, 1, 16'h0005, 1'b0); // after LDI 5
-        validate(16, 1, 16'h0003, 1'b0); // after LDI 3
-        validate(18, 1, 16'h0003, 1'b0); // after load nibble -> ACC=3
+        validate(14, 1, 16'h0005, 1'b0); // LDI   (UL) -> ACC=0x0005
+        validate(16, 1, 16'h0003, 1'b0); // LDI   (UL) -> ACC=0x0003
+        validate(18, 1, 16'h0003, 1'b0); // XMEM load  -> ACC=3
         check_mem_byte(128, 8'h05);
         check_mem_byte(129, 8'h03);
 
         // Phase 3 (LK8 byte ops)
-        validate(21, 1, 16'h005B, 1'b0); // after forming 0x5B
-        validate(24, 1, 16'h0000, 1'b0); // after clearing ACC
-        validate(27, 1, 16'h0000, 1'b0); // after load byte (ACC=0)
-        validate(28, 1, 16'h0000, 1'b0); // after post-dec load (ACC=0)
+        validate(21, 1, 16'h005B, 1'b0); // LDI  (LK8) -> ACC=0x5B 
+        validate(24, 1, 16'h0000, 1'b0); // LDI  (LK8) -> ACC=0
+        validate(27, 1, 16'h0000, 1'b0); // XMEM load byte -> ACC=0
+        validate(28, 1, 16'h0000, 1'b0); // XMEM post-dec load -> ACC=0
         check_mem_byte(129, 8'h5B);
         check_mem_byte(130, 8'h00);
 
         // Phase 4 (LK16 word ops, AR=RA1)
-        validate(33, 1, 16'h1234, 1'b0); // after LDI 0x1234
-        validate(36, 1, 16'h0000, 1'b0); // after clearing ACC
-        validate(40, 1, 16'h1234, 1'b0); // after load word back
+        validate(33, 1, 16'h1234, 1'b0); // LDI -> ACC=0x1234 (LK16)
+        validate(36, 1, 16'h0000, 1'b0); // LDI -> ACC=0 (clear before load)
+        validate(40, 1, 16'h1234, 1'b0); // XMEM load word -> ACC=0x1234
         check_mem_byte(144, 8'h34);
         check_mem_byte(145, 8'h12);
 
         // Phase 5 (AR=RA1 in UL, DIR=dec, store endianness)
-        validate(43, 1, 16'h0005, 1'b0); // ACC=5 store to RA1
-        validate(45, 1, 16'h0005, 1'b0); // load back via RA1
-        validate(47, 1, 16'h0005, 1'b0); // after DIR=dec load
-        validate(53, 1, 16'h1234, 1'b0); // after LDI 0x1234 (store)
-        validate(55, 1, 16'h1234, 1'b0); // after load word back
+        validate(43, 1, 16'h0005, 1'b0); // LDI -> ACC=5 (store UL @RA1)
+        validate(45, 1, 16'h0005, 1'b0); // XMEM load UL -> ACC=5
+        validate(47, 1, 16'h0005, 1'b0); // XMEM DIR=dec load -> ACC=5
+        validate(53, 1, 16'h1234, 1'b0); // LDI -> ACC=0x1234 (prep store)
+        validate(55, 1, 16'h1234, 1'b0); // XMEM load word back -> ACC=0x1234
         check_mem_byte(144, 8'h34);
         check_mem_byte(145, 8'h12);
 

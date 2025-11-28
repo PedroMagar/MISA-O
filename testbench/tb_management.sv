@@ -16,14 +16,14 @@ module tb_management;
     wire        test_carry;
 
     misao dut (
-        .clk(clk), 
-        .rst(rst), 
-        .mem_enable_read(mem_enable_read), 
-        .mem_enable_write(mem_enable_write), 
-        .mem_data_in(mem_data_in), 
-        .mem_addr(mem_addr), 
-        .mem_rw(mem_rw), 
-        .mem_data_out(mem_data_out), 
+        .clk(clk),
+        .rst(rst),
+        .mem_enable_read(mem_enable_read),
+        .mem_enable_write(mem_enable_write),
+        .mem_data_in(mem_data_in),
+        .mem_addr(mem_addr),
+        .mem_rw(mem_rw),
+        .mem_data_out(mem_data_out),
         .test_data(test_data),
         .test_carry(test_carry)
     );
@@ -80,120 +80,245 @@ module tb_management;
 
         // ================================================================
         // Test Sequence (Management)
+        // Each phase padded so the next one starts on a full byte (PC low)
         // ================================================================
-        
-        // Phase 1: Setup & Pattern Loading (LK16) -> ACC = 0xAAAA
-        memory[1] = {CFG, XOP};       // XOP CFG
-        memory[2] = {4'h4, 4'hE};     // cfg=0x4E (LK16)
-        memory[3] = {LDI, 4'h0};      // LDI opcode (imm follows)
-        memory[4] = {4'hA, 4'hA};     // imm0=0xA, imm1=0xA
-        memory[5] = {4'hA, 4'hA};     // imm2=0xA, imm3=0xA -> ACC=0xAAAA
 
-        // Phase 2: SS in UL, exercising low-nibble swaps
-        memory[6] = {CFG, XOP};       // XOP CFG
-        memory[7] = {4'h4, 4'hC};     // cfg=0x4C (UL)
-        memory[8] = {4'h1, LDI};      // ACC[0]=1 -> 0xAAA1
-        memory[9] = {SS , NOP};       // swap low nibble with RS0 (0) -> ACC=0xAAA0, RS0=0x0001
-        memory[10]= {4'h2, LDI};      // ACC[0]=2 -> 0xAAA2
-        memory[11]= {SS , 4'h0};      // swap low nibble with RS0 (1) -> ACC=0xAAA1, RS0=0x0002
+        // Phase 1: LDI (UL -> LK8 -> LK16), aligned with NOPs
+        memory[1]  = {4'h5, LDI};    // LDI 0x5 -> ACC=0x0005
+        memory[2]  = {CFG, XOP};     // XOP CFG
+        memory[3]  = {4'h4, 4'hD};   // CFG LK8 -> link=LK8
+        memory[4]  = {4'h3, LDI};    // LDI 0x00B3 (aligned)
+        memory[5]  = {XOP, 4'hB};    // padding high nibble
+        memory[6]  = {4'hE, CFG};     // XOP CFG
+        memory[7]  = {NOP, 4'h4};   // CFG LK16 -> link=LK16
+        memory[8]  = {4'hE, LDI};    // LDI 0xCAFE (aligned)
+        memory[9]  = {4'hA, 4'hF};
+        memory[10] = {NOP, 4'hC};    // align next phase
 
-        // Phase 3: SA in UL, full 16-bit swap with RA0
-        memory[12]= {SA , XOP};       // swap ACC(0xAAA1) <-> RA0(0) -> ACC=0x0000, RA0=0xAAA1
-        memory[13]= {4'h5, LDI};      // ACC[0]=5 -> 0x0005
-        memory[14]= {SA , XOP};       // swap ACC(0x0005) <-> RA0(0xAAA1) -> ACC=0xAAA1, RA0=0x0005
+        // Phase 2: CFG + LDI (byte-aligned vs misaligned cases)
+        memory[11] = {CFG, XOP};     // CFG LK8 (baseline)
+        memory[12] = {4'h4, 4'hD};
+        memory[13] = {LDI, NOP};     // opcode at high nib (unaligned LDI 0x0091)
+        memory[14] = {4'h9, 4'h1};
+        memory[15] = {CFG, XOP};     // CFG UL
+        memory[16] = {4'h4, 4'hC};
+        memory[17] = {4'h6, LDI};    // LDI 0x6 (UL)
+        memory[18] = {CFG, XOP};     // CFG LK16
+        memory[19] = {4'h4, 4'hE};
+        memory[20] = {4'h7, LDI};    // LDI 0x1357 (aligned)
+        memory[21] = {4'h3, 4'h5};
+        memory[22] = {NOP, 4'h1};
 
-        // Phase 4: RSS (LK16), rotate RS0/RS1
-        memory[15]= {CFG, XOP};       // XOP CFG
-        memory[16]= {4'h4, 4'hE};     // cfg=0x4E (LK16)
-        memory[17]= {LDI, 4'h0};      // LDI 0xBBBB
-        memory[18]= {4'hB, 4'hB};     // imm0/imm1
-        memory[19]= {4'hB, 4'hB};     // imm2/imm3
-        memory[20]= {NOP , SS};       // swap ACC(0xBBBB) <-> RS0 -> RS0=0xBBBB
-        memory[21]= {RSS, NOP};       // rotate RS stack -> RS0=0, RS1=0xBBBB
-        memory[22]= {LDI, 4'h0};      // LDI 0xCCCC
-        memory[23]= {4'hC, 4'hC};     // imm0/imm1
-        memory[24]= {4'hC, 4'hC};     // imm2/imm3
-        memory[25]= {SS , NOP};       // RS0=0xCCCC
-        memory[26]= {RSS, NOP};       // RS0=0xBBBB, RS1=0xCCCC
-        memory[27]= {SS , NOP};       // ACC=0xBBBB
+        // Phase 3: RACC + RRS (UL -> LK8 -> LK16) with RS0 capture via LK16+SS
+        memory[23] = {SS , NOP};     // seed RS0 with ACC (full swap in LK16)
+        memory[24] = {CFG, XOP};     // CFG UL
+        memory[25] = {4'h4, 4'hC};
+        memory[26] = {4'hA, LDI};    // LDI 0xA (UL)
+        memory[27] = {RACC, NOP};    // rotate ACC nibbles (UL)
+        memory[28] = {RRS , XOP};    // RRS (UL rotate RS0 by nibble) -> RS0=0x7135
+        memory[29] = {CFG, XOP};     // hop to LK16 to pull RS0 into ACC
+        memory[30] = {4'h4, 4'hE};
+        memory[31] = {SS , NOP};     // SS (LK16) ACC=RS0=0x7135, RS0=0xA000
+        memory[32] = {CFG, XOP};     // CFG LK8
+        memory[33] = {4'h4, 4'hD};
+        memory[34] = {4'h2, LDI};    // LDI 0x00D2 (aligned)
+        memory[35] = {NOP, 4'hD};
+        memory[36] = {RACC, NOP};    // rotate ACC by link width (LK8 byte swap)
+        memory[37] = {RRS , XOP};    // RRS (LK8 swap bytes in RS0) -> RS0=0x00A0
+        memory[38] = {CFG, XOP};     // hop to LK16 to pull RS0 into ACC
+        memory[39] = {4'h4, 4'hE};
+        memory[40] = {SS , NOP};     // SS (LK16) ACC=RS0=0x00A0, RS0=0xD2A0
+        memory[41] = {4'hB, LDI};    // LDI 0x89AB (aligned)
+        memory[42] = {4'h9, 4'hA};
+        memory[43] = {NOP, 4'h8};
+        memory[44] = {RACC, NOP};    // RACC -> NOP in LK16
+        memory[45] = {RRS , XOP};    // RRS -> NOP in LK16
 
-        // Phase 5: RSA, rotate RA0/RA1 full 16b
-        memory[28]= {LDI, 4'h0};      // LDI 0x1111
-        memory[29]= {4'h1, 4'h1};     // imm0/imm1
-        memory[30]= {4'h1, 4'h1};     // imm2/imm3
-        memory[31]= {SA , XOP};       // RA0=0x1111
-        memory[32]= {RSA, XOP};       // RA0<->RA1 (RA1=0x1111)
-        memory[33]= {LDI, 4'h0};      // LDI 0x2222
-        memory[34]= {4'h2, 4'h2};     // imm0/imm1
-        memory[35]= {4'h2, 4'h2};     // imm2/imm3
-        memory[36]= {SA , XOP};       // RA0=0x2222
-        memory[37]= {RSA, XOP};       // RA0=0x1111, RA1=0x2222
-        memory[38]= {SA , XOP};       // ACC=0x1111
+        // Phase 4: SS + RSS (UL -> LK8 -> LK16)
+        memory[46] = {CFG, XOP};     // CFG UL
+        memory[47] = {4'h4, 4'hC};
+        memory[48] = {4'h7, LDI};    // LDI 0x7 (UL)
+        memory[49] = {SS , NOP};     // SS (UL swap low nibble with RS0)
+        memory[50] = {RSS , NOP};    // RSS (swap RS0/RS1)
+        memory[51] = {CFG, XOP};     // CFG LK8
+        memory[52] = {4'h4, 4'hD};
+        memory[53] = {4'h6, LDI};    // LDI 0x00B6 (aligned)
+        memory[54] = {NOP, 4'hB};
+        memory[55] = {SS , NOP};     // SS (LK8 swap low byte with RS0)
+        memory[56] = {RSS , NOP};    // RSS (swap RS0/RS1)
+        memory[57] = {CFG, XOP};     // CFG LK16
+        memory[58] = {4'h4, 4'hE};
+        memory[59] = {4'h4, LDI};    // LDI 0x2244 (aligned)
+        memory[60] = {4'h2, 4'h4};
+        memory[61] = {NOP, 4'h2};
+        memory[62] = {SS , NOP};     // SS (LK16 full swap ACC/RS0)
+        memory[63] = {RSS , NOP};    // RSS (swap RS0/RS1)
 
-        // Phase 6: RRS in UL (rotate RS0 low nibble away)
-        memory[39]= {CFG, XOP};       // XOP CFG
-        memory[40]= {4'h4, 4'hC};     // cfg=0x4C (UL)
-        memory[41]= {4'h4, LDI};      // ACC[0]=4
-        memory[42]= {SS , NOP};       // RS0 low nibble =4
-        memory[43]= {4'h1, LDI};      // ACC[0]=1
-        memory[44]= {SS , NOP};       // RS0 low nibble =1
-        memory[45]= {RRS, XOP};       // rotate RS0 >>4 -> low nibble becomes 0
-        memory[46]= {SS , NOP};       // swap low nibble back -> ACC[0]=0
+        // Phase 5: SA + RSA (UL -> LK8 -> LK16)
+        memory[64] = {CFG, XOP};     // CFG UL
+        memory[65] = {4'h4, 4'hC};
+        memory[66] = {4'hC, LDI};    // LDI 0xC (UL)
+        memory[67] = {SA , XOP};     // SA (swap ACC/RA0)
+        memory[68] = {RSA, XOP};     // RSA (swap RA0/RA1)
+        memory[69] = {CFG, XOP};     // CFG LK8
+        memory[70] = {4'h4, 4'hD};
+        memory[71] = {4'hE, LDI};    // LDI 0x00DE (aligned)
+        memory[72] = {NOP, 4'hD};
+        memory[73] = {SA , XOP};     // SA (swap ACC/RA0)
+        memory[74] = {RSA, XOP};     // RSA (swap RA0/RA1)
+        memory[75] = {CFG, XOP};     // CFG LK16
+        memory[76] = {4'h4, 4'hE};
+        memory[77] = {4'hD, LDI};    // LDI 0xABCD (aligned)
+        memory[78] = {4'hB, 4'hC};
+        memory[79] = {NOP, 4'hA};
+        memory[80] = {SA , XOP};     // SA (swap ACC/RA0)
+        memory[81] = {RSA, XOP};     // RSA (swap RA0/RA1)
 
-        // Phase 7: RRS NOP in LK16 (RS0/ACC unchanged)
-        memory[47]= {CFG, XOP};       // XOP CFG
-        memory[48]= {4'h4, 4'hE};     // cfg=0x4E (LK16)
-        memory[49]= {LDI, 4'h0};      // LDI opcode (imm follows) -> target 0x0005
-        memory[50]= {4'h0, 4'h5};     // imm0=0x0, imm1=0x5
-        memory[51]= {4'h0, 4'h0};     // imm2=0x0, imm3=0x0 -> ACC=0x0005
-        memory[52]= {SS , NOP};       // swap ACC(0x0005) <-> RS0(0x0004) -> ACC=0x0004, RS0=0x0005
-        memory[53]= {RRS, XOP};       // RRS in LK16 -> NOP (RS0 unchanged)
-        memory[54]= {SS , NOP};       // swap back -> ACC=0x0005, RS0=0x0004
-
+        // Phase 6: Mixed
+        memory[82]  = {CFG , XOP};   // low=XOP, high=CFG (LK16)
+        memory[83]  = {4'h4, 4'hE};  // low=E imm0, high=4 imm1 (CFG=0x4E)
+        memory[84]  = {4'hE, LDI};   // low=LDI, high=imm0=E (LDI16 EBFE)
+        memory[85]  = {4'hB, 4'hF};  // low=F imm1, high=B imm2
+        memory[86]  = {SS  , 4'hE};  // low=E imm3, high=SS LK16 (swap -> RS0=EBFE)
+        memory[87]  = {4'h0, LDI};   // low=LDI, high=imm0=0 (LDI16 EBA0)
+        memory[88]  = {4'hB, 4'hA};  // low=A imm1, high=B imm2
+        memory[89]  = {XOP , 4'hE};  // low=E imm3, high=XOP
+        memory[90]  = {SA  , XOP};   // low=XOP, high=SA (RA0=EBA0)
+        memory[91]  = {RSA , XOP};   // low=XOP, high=RSA (RA0↔RA1)
+        memory[92]  = {4'hC, CFG};   // low=CFG (UL), high=imm0=C
+        memory[93]  = {LDI , 4'h4};  // low=4 imm1, high=LDI (UL imm=E)
+        memory[94]  = {RACC, 4'hE};  // low=E imm0, high=RACC UL #1
+        memory[95]  = {4'hF, LDI};   // low=LDI (UL imm=F), high=F
+        memory[96]  = {XOP , RACC};  // low=RACC UL #2, high=XOP
+        memory[97]  = {4'hD, CFG};   // low=CFG (LK8), high=imm0=D
+        memory[98]  = {LDI , 4'h4};  // low=4 imm1, high=LDI (LK8 imm0=E)
+        memory[99]  = {4'hB, 4'hE};  // low=E imm1, high=B imm0 (LDI8 0xBE)
+        memory[100] = {RRS , XOP};   // low=XOP, high=RRS LK8 #1
+        memory[101] = {4'hE, LDI};   // low=LDI (LK8 imm0=E), high=E
+        memory[102] = {XOP , 4'hF};  // low=F imm1, high=XOP
+        memory[103] = {XOP , RRS};   // low=RRS LK8 #2, high=XOP
+        memory[104] = {4'hE, CFG};   // low=CFG (LK16), high=E imm0
+        memory[105] = {XOP , 4'h4};  // low=4 imm1, high=XOP
+        memory[106] = {SA  , XOP};   // low=XOP, high=SA (RA0=BEFE)
+        memory[107] = {RSS , RSA};   // low=RSA, high=RSS
+        memory[108] = {XOP , RSS};   // low=RSS, high=XOP
+        memory[109] = {4'hC, CFG};   // low=CFG (UL), high=imm0=C
+        memory[110] = {RACC, 4'h4};  // low=4 imm1, high=RACC UL #3
+        memory[111] = {XOP , RACC};  // low=RACC UL #4, high=XOP
+        memory[112] = {4'hD, CFG};   // low=CFG (LK8), high=imm0=D
+        memory[113] = {LDI , 4'h4};  // low=4 imm1, high=LDI (LK8 imm0=A)
+        memory[114] = {4'hC, 4'hA};  // low=A imm0, high=C imm1 (LDI8 0xCA)
+        memory[115] = {LDI , RACC};  // low=RACC LK8 #3, high=LDI (LK8 imm0=F)
+        memory[116] = {4'hF, 4'hE};  // low=E imm1, high=F imm0 (LDI8 0xFE)
+        memory[117] = {XOP , RACC};  // low=RACC LK8 #4, high=XOP
+        memory[118] = {XOP , RRS};   // low=RRS LK8 #3, high=XOP
+        memory[119] = {SS  , RRS};   // low=RRS LK8 #4, high=SS (final)
         // ================================================================
         // Execution & Checks
         // ================================================================
         
         #50; rst = 0;
 
-        // Validations (one per instruction; cycles>=1 unless nibble-early noted)
-        validate( 4, 1, 16'h0000, 1'b0); // CFG LK16   -> link=LK16, flags set
-        validate( 5, 1, 16'hAAAA, 1'b0); // LDI 0xAAAA -> ACC=0xAAAA
-        validate( 7, 1, 16'hAAAA, 1'b0); // CFG UL     -> link=UL, ACC unchanged
-        validate( 8, 1, 16'hAAA1, 1'b0); // LDI 0x1    -> ACC=0xAAA1
-        validate( 9, 1, 16'hAAA0, 1'b0); // SS         -> ACC=0xAAA0, RS0=0x0001 (swap low nibble)
-        validate(10, 1, 16'hAAA2, 1'b0); // LDI 0x2    -> ACC=0xAAA2
-        validate(11, 1, 16'hAAA1, 1'b0); // SS         -> ACC=0xAAA1, RS0=0x0002 (swap back)
-        validate(12, 1, 16'h0000, 1'b0); // SA         -> ACC=0x0000, RA0=0xAAA1 (full swap)
-        validate(13, 1, 16'h0005, 1'b0); // LDI 0x5    -> ACC=0x0005
-        validate(14, 1, 16'hAAA1, 1'b0); // SA         -> ACC=0xAAA1, RA0=0x0005 (full swap)
-        validate(16, 1, 16'hAAA1, 1'b0); // CFG LK16   -> link=LK16, ACC unchanged
-        validate(19, 1, 16'hBBBB, 1'b0); // LDI 0xBBBB -> ACC=0xBBBB
-        validate(20, 0, 16'h0002, 1'b0); // SS         -> ACC=0x0002, RS0=0xBBBB (swap full width)
-        validate(21, 1, 16'h0002, 1'b0); // RSS        -> ACC=0x0002, RS0=0x0000, RS1=0xBBBB
-        validate(24, 1, 16'hCCCC, 1'b0); // LDI 0xCCCC -> ACC=0xCCCC
-        validate(25, 1, 16'h0000, 1'b0); // SS         -> ACC=0x0000, RS0=0xCCCC
-        validate(26, 1, 16'h0000, 1'b0); // RSS        -> ACC=0x0000, RS0=0xBBBB, RS1=0xCCCC
-        validate(27, 1, 16'hBBBB, 1'b0); // SS         -> ACC=0xBBBB, RS0=0x0000
-        validate(30, 1, 16'h1111, 1'b0); // LDI 0x1111 -> ACC=0x1111
-        validate(31, 1, 16'h0005, 1'b0); // SA         -> ACC=0x0005, RA0=0x1111
-        validate(32, 1, 16'h0005, 1'b0); // RSA        -> ACC=0x0005, RA0=0x0000, RA1=0x1111
-        validate(35, 1, 16'h2222, 1'b0); // LDI 0x2222 -> ACC=0x2222
-        validate(36, 1, 16'h0000, 1'b0); // SA         -> ACC=0x0000, RA0=0x2222
-        validate(37, 1, 16'h0000, 1'b0); // RSA        -> ACC=0x0000, RA0=0x1111, RA1=0x2222
-        validate(38, 1, 16'h1111, 1'b0); // SA         -> ACC=0x1111, RA0=0x0000
-        validate(40, 1, 16'h1111, 1'b0); // CFG UL     -> link=UL, ACC unchanged
-        validate(41, 1, 16'h1114, 1'b0); // LDI 0x4    -> ACC=0x1114
-        validate(42, 1, 16'h1110, 1'b0); // SS         -> ACC=0x1110, RS0=0x0004
-        validate(43, 1, 16'h1111, 1'b0); // LDI 0x1    -> ACC=0x1111
-        validate(44, 1, 16'h1114, 1'b0); // SS         -> ACC=0x1114, RS0=0x0001
-        // validate(45, 1, 16'h1114, 1'b0); // RRS        -> ACC=0x1114, RS0=0x0000
-        // validate(46, 1, 16'h1110, 1'b0); // SS         -> ACC=0x1110, RS0=0x0004
-        // validate(48, 1, 16'h1110, 1'b0); // CFG LK16   -> link=LK16, ACC unchanged
-        // validate(51, 1, 16'h0005, 1'b0); // LDI 0x0005 -> ACC=0x0005
-        // validate(52, 1, 16'h0004, 1'b0); // SS         -> ACC=0x0004, RS0=0x0005
-        // validate(53, 1, 16'h0004, 1'b0); // RRS        -> ACC=0x0004 (LK16 no-op on RS0)
-        // validate(54, 1, 16'h0005, 1'b0); // SS         -> ACC=0x0005, RS0=0x0004
+        // Phase 1 validations
+        validate( 1, 1, 16'h0005, 1'b0); // LDI 0x5     -> ACC=0x0005
+        validate( 3, 1, 16'h0005, 1'b0); // CFG LK8     -> link=LK8, ACC=0x0005
+        validate( 5, 0, 16'h00B3, 1'b0); // LDI 0x00B3  -> ACC=0x00B3
+        validate( 7, 1, 16'h00B3, 1'b0); // CFG LK16    -> link=LK16, ACC=0x00B3
+        validate(10, 0, 16'hCAFE, 1'b0); // LDI 0xCAFE  -> ACC=0xCAFE
+
+        // Phase 2 validations
+        validate(12, 1, 16'hCAFE, 1'b0); // CFG LK8     -> link=LK8, ACC=0xCAFE
+        validate(14, 1, 16'hCA91, 1'b0); // LDI 0x0091  -> ACC=0xCA91                           (unaligned)
+        validate(16, 1, 16'hCA91, 1'b0); // CFG UL      -> link=UL, ACC=0xCA91
+        validate(17, 1, 16'hCA96, 1'b0); // LDI 0x6     -> ACC=0xCA96
+        validate(19, 1, 16'hCA96, 1'b0); // CFG LK16    -> link=LK16, ACC=0xCA96
+        validate(22, 0, 16'h1357, 1'b0); // LDI 0x1357  -> ACC=0x1357
+
+        // Phase 3 validations (RACC + RRS with RS0 capture)
+        validate(23, 1, 16'h0000, 1'b0); // SS          -> ACC=0x0000, RS0=0x1357               (LK16)
+        validate(25, 1, 16'h0000, 1'b0); // CFG UL      -> link=UL
+        validate(26, 1, 16'h000A, 1'b0); // LDI 0xA     -> ACC=0x000A
+        validate(27, 1, 16'hA000, 1'b0); // RACC        -> ACC=0xA000                           (UL nibble swap)
+        validate(28, 1, 16'hA000, 1'b0); // RRS         -> ACC=0xA000, RS0=0x7135               (UL nibble swap)
+        validate(30, 1, 16'hA000, 1'b0); // CFG LK16    -> link=LK16
+        validate(31, 1, 16'h7135, 1'b0); // SS          -> ACC=0x7135 (captura RS0), RS0=0xA000
+        validate(33, 1, 16'h7135, 1'b0); // CFG LK8     -> link=LK8
+        validate(35, 0, 16'h71D2, 1'b0); // LDI 0x00D2  -> ACC=0x71D2 (upper byte preserved)
+        validate(36, 1, 16'hD271, 1'b0); // RACC        -> ACC=0xD271                           (LK8 byte swap)
+        validate(37, 1, 16'hD271, 1'b0); // RRS         -> ACC=0xD271, RS0=0x00A0               (LK8 byte swap)
+        validate(39, 1, 16'hD271, 1'b0); // CFG LK16    -> link=LK16
+        validate(40, 1, 16'h00A0, 1'b0); // SS          -> ACC=0x00A0 (captura RS0), RS0=0xD271
+        validate(43, 0, 16'h89AB, 1'b0); // LDI 0x89AB  -> ACC=0x89AB
+        validate(44, 1, 16'h89AB, 1'b0); // RACC        -> ACC=0x89AB                           (LK16 no-op)
+        validate(45, 1, 16'h89AB, 1'b0); // RRS         -> ACC=0x89AB, RS0=0xD2A0               (LK16 no-op)
+
+        // Phase 4 validations (SS + RSS)
+        validate(47, 1, 16'h89AB, 1'b0); // CFG UL      -> link=UL
+        validate(48, 1, 16'h89A7, 1'b0); // LDI 0x7     -> ACC=0x89A7
+        validate(49, 1, 16'h89A1, 1'b0); // SS          -> ACC=0x89A1, RS0=0xD277               (UL low-nibble swap)
+        validate(50, 1, 16'h89A1, 1'b0); // RSS         -> ACC=0x89A1, RS0=0x0000, RS1=0xD277
+        validate(52, 1, 16'h89A1, 1'b0); // CFG LK8     -> link=LK8 (ACC unchanged)
+        validate(54, 0, 16'h89B6, 1'b0); // LDI 0x00B6  -> ACC=0x89B6
+        validate(55, 1, 16'h8900, 1'b0); // SS          -> ACC=0x8900, RS0=0x00B6               (LK8)
+        validate(56, 1, 16'h8900, 1'b0); // RSS         -> ACC=0x8900, RS0=0xD277, RS1=0x00B6
+        validate(58, 1, 16'h8900, 1'b0); // CFG LK16    -> link=LK16
+        validate(61, 0, 16'h2244, 1'b0); // LDI 0x2244  -> ACC=0x2244
+        validate(62, 1, 16'hD277, 1'b0); // SS          -> ACC=0xD277, RS0=0x2244               (LK16)
+        validate(63, 1, 16'hD277, 1'b0); // RSS         -> ACC=0xD277, RS0=0x00B6, RS1=0x2244
+
+        // Phase 5 validations (SA + RSA)
+        validate(65, 1, 16'hD277, 1'b0); // CFG UL      -> link=UL
+        validate(66, 1, 16'hD27C, 1'b0); // LDI 0xC     -> ACC=0xD27C
+        validate(67, 1, 16'h0000, 1'b0); // SA          -> ACC=0x0000, RA0=0xD27C
+        validate(68, 1, 16'h0000, 1'b0); // RSA         -> ACC=0x0000, RA0=0x0000, RA1=0xD27C
+        validate(70, 1, 16'h0000, 1'b0); // CFG LK8     -> link=LK8
+        validate(72, 0, 16'h00DE, 1'b0); // LDI 0x00DE  -> ACC=0x00DE
+        validate(73, 1, 16'h0000, 1'b0); // SA          -> ACC=0x0000, RA0=0x00DE
+        validate(74, 1, 16'h0000, 1'b0); // RSA         -> ACC=0x0000, RA0=0xD27C, RA1=0x00DE
+        validate(76, 1, 16'h0000, 1'b0); // CFG LK16    -> link=LK16
+        validate(79, 0, 16'hABCD, 1'b0); // LDI 0xABCD  -> ACC=0xABCD
+        validate(80, 1, 16'hD27C, 1'b0); // SA          -> ACC=0xD27C, RA0=0xABCD
+        validate(81, 1, 16'hD27C, 1'b0); // RSA         -> ACC=0xD27C, RA0=0x00DE, RA1=0xABCD
+
+        // Phase 6 validations (nibble-packed)
+        validate(82,  1, 16'hD27C, 1'b0); // CFG LK16 -> ACC=0xD27C
+        validate(83,  1, 16'hD27C, 1'b0); // CFG imm1
+        validate(84,  1, 16'hD27C, 1'b0); // LDI16 EBFE (imm0)
+        validate(85,  1, 16'hD27C, 1'b0); // LDI16 EBFE (imm1/2)
+        validate(86,  1, 16'h00B6, 1'b0); // SS LK16 -> ACC=0x00B6 (RS0=EBFE)
+        validate(87,  1, 16'h00B6, 1'b0); // LDI16 EBA0 (imm0)
+        validate(88,  1, 16'h00B6, 1'b0); // LDI16 EBA0 (imm1/2)
+        validate(89,  1, 16'hEBA0, 1'b0); // imm3 + XOP
+        validate(90,  1, 16'hEBFE, 1'b0); // SA (RA0=EBA0)
+        validate(91,  1, 16'hEBFE, 1'b0); // RSA (RA0↔RA1)
+        validate(92,  1, 16'hEBFE, 1'b0); // CFG UL
+        validate(93,  1, 16'hEBFE, 1'b0); // LDI UL imm1
+        validate(94,  1, 16'hEBFE, 1'b0); // RACC UL #1
+        validate(95,  1, 16'h46E4, 1'b0); // LDI UL immF
+        validate(96,  1, 16'h46E4, 1'b0); // RACC UL #2
+        validate(97,  1, 16'h46E4, 1'b0); // CFG LK8
+        validate(98,  1, 16'h46E4, 1'b0); // LDI8 BE (imm1)
+        validate(99,  1, 16'h46BE, 1'b0); // LDI8 BE done
+        validate(100, 1, 16'h46BE, 1'b0); // RRS LK8 #1
+        validate(101, 1, 16'h46BE, 1'b0); // LDI8 FE (imm0)
+        validate(102, 1, 16'h46FE, 1'b0); // LDI8 FE done
+        validate(103, 1, 16'h46FE, 1'b0); // RRS LK8 #2
+        validate(104, 1, 16'h46FE, 1'b0); // CFG LK16
+        validate(105, 1, 16'h46FE, 1'b0); // CFG imm1
+        validate(106, 1, 16'hEBA0, 1'b0); // SA (RA0=BEFE)
+        validate(107, 1, 16'hEBA0, 1'b0); // RSA #2
+        validate(108, 1, 16'hEBA0, 1'b0); // RSA #3
+        validate(109, 1, 16'hEBA0, 1'b0); // RSS #1/#2
+        validate(110, 1, 16'h0EBA, 1'b0); // CFG UL
+        validate(111, 1, 16'hA0EB, 1'b0); // RACC UL #3/#4
+        validate(112, 1, 16'hA0EB, 1'b0); // CFG LK8
+        validate(113, 1, 16'hA0EB, 1'b0); // LDI8 CA (imm1)
+        validate(114, 1, 16'hA0CA, 1'b0); // LDI8 CA done
+        validate(115, 1, 16'hCAA0, 1'b0); // LDI8 FE start + RACC #3
+        validate(116, 1, 16'hCAFE, 1'b0); // LDI8 FE done
+        validate(117, 1, 16'hFECA, 1'b0); // RACC LK8 #4
+        validate(118, 1, 16'hFECA, 1'b0); // RRS LK8 #3
+        validate(119, 1, 16'hFE44, 1'b0); // RRS LK8 #4 + SS LK8 final
 
         $display("========================");
         $display("= MANAGEMENT TEST DONE =");
