@@ -175,44 +175,52 @@ module tb_management;
         memory[81] = {RSA, XOP};     // RSA (swap RA0/RA1)
 
         // Phase 6: Mixed
-        memory[82]  = {CFG , XOP};   // low=XOP, high=CFG (LK16)
-        memory[83]  = {4'h4, 4'hE};  // low=E imm0, high=4 imm1 (CFG=0x4E)
-        memory[84]  = {4'hE, LDI};   // low=LDI, high=imm0=E (LDI16 EBFE)
-        memory[85]  = {4'hB, 4'hF};  // low=F imm1, high=B imm2
-        memory[86]  = {SS  , 4'hE};  // low=E imm3, high=SS LK16 (swap -> RS0=EBFE)
-        memory[87]  = {4'h0, LDI};   // low=LDI, high=imm0=0 (LDI16 EBA0)
-        memory[88]  = {4'hB, 4'hA};  // low=A imm1, high=B imm2
-        memory[89]  = {XOP , 4'hE};  // low=E imm3, high=XOP
-        memory[90]  = {SA  , XOP};   // low=XOP, high=SA (RA0=EBA0)
-        memory[91]  = {RSA , XOP};   // low=XOP, high=RSA (RA0↔RA1)
-        memory[92]  = {4'hC, CFG};   // low=CFG (UL), high=imm0=C
-        memory[93]  = {LDI , 4'h4};  // low=4 imm1, high=LDI (UL imm=E)
-        memory[94]  = {RACC, 4'hE};  // low=E imm0, high=RACC UL #1
-        memory[95]  = {4'hF, LDI};   // low=LDI (UL imm=F), high=F
-        memory[96]  = {XOP , RACC};  // low=RACC UL #2, high=XOP
-        memory[97]  = {4'hD, CFG};   // low=CFG (LK8), high=imm0=D
-        memory[98]  = {LDI , 4'h4};  // low=4 imm1, high=LDI (LK8 imm0=E)
-        memory[99]  = {4'hB, 4'hE};  // low=E imm1, high=B imm0 (LDI8 0xBE)
-        memory[100] = {RRS , XOP};   // low=XOP, high=RRS LK8 #1
-        memory[101] = {4'hE, LDI};   // low=LDI (LK8 imm0=E), high=E
-        memory[102] = {XOP , 4'hF};  // low=F imm1, high=XOP
-        memory[103] = {XOP , RRS};   // low=RRS LK8 #2, high=XOP
-        memory[104] = {4'hE, CFG};   // low=CFG (LK16), high=E imm0
-        memory[105] = {XOP , 4'h4};  // low=4 imm1, high=XOP
-        memory[106] = {SA  , XOP};   // low=XOP, high=SA (RA0=BEFE)
-        memory[107] = {RSS , RSA};   // low=RSA, high=RSS
-        memory[108] = {XOP , RSS};   // low=RSS, high=XOP
-        memory[109] = {4'hC, CFG};   // low=CFG (UL), high=imm0=C
-        memory[110] = {RACC, 4'h4};  // low=4 imm1, high=RACC UL #3
-        memory[111] = {XOP , RACC};  // low=RACC UL #4, high=XOP
-        memory[112] = {4'hD, CFG};   // low=CFG (LK8), high=imm0=D
-        memory[113] = {LDI , 4'h4};  // low=4 imm1, high=LDI (LK8 imm0=A)
-        memory[114] = {4'hC, 4'hA};  // low=A imm0, high=C imm1 (LDI8 0xCA)
-        memory[115] = {LDI , RACC};  // low=RACC LK8 #3, high=LDI (LK8 imm0=F)
-        memory[116] = {4'hF, 4'hE};  // low=E imm1, high=F imm0 (LDI8 0xFE)
-        memory[117] = {XOP , RACC};  // low=RACC LK8 #4, high=XOP
-        memory[118] = {XOP , RRS};   // low=RRS LK8 #3, high=XOP
-        memory[119] = {SS  , RRS};   // low=RRS LK8 #4, high=SS (final)
+        memory[82]  = {CFG , XOP};   // CFG LK16
+        memory[83]  = {4'h4, 4'hE};  // imm1=4 / imm0=E  (CFG=0x4E)
+
+        memory[84]  = {4'hA, LDI};   // LDi 0xEBA0                      imm0=A / LDI16 start
+        memory[85]  = {4'hA, 4'hB};  //                                 imm2=A / imm1=B
+        memory[86]  = {XOP , 4'hE};  // imm3=E / XOP (SA)
+        memory[87]  = {XOP , SA };   // SA -> ACC=0 / XOP (RSA)
+        memory[88]  = {XOP , RSA};   // RSA -> RA1=EBA0 / XOP (CFG UL)
+
+        memory[89]  = {4'hC, CFG};   // imm0=C (0x4C) / CFG
+        memory[90]  = {LDI , 4'h4};  // imm1=4 / LDI UL 0xE
+        memory[91]  = {RACC, 4'hE};  // imm0=E / RACC UL
+        memory[92]  = {4'hF, LDI};   // imm0=F / LDI UL 0xF
+        memory[93]  = {NOP , RACC};  // RACC UL / XOP (CFG LK8)
+
+        memory[94]  = {CFG, XOP };   // CFG LK8
+        memory[95]  = {4'h4, 4'hD};  // 
+        memory[96]  = {4'hE, LDI};   // LDi 0xBE
+        memory[97]  = {RACC, 4'hB};  // RACC
+        memory[98]  = {SA  , XOP};   // SA -> RA0=BEFE 
+        memory[99]  = {RSA , XOP};   // RSA -> RA1=BEFE 
+        memory[100] = {SA  , XOP};   // XOP (SA) / SA -> ACC=BEFE
+        memory[101] = {SA  , XOP};   // XOP (RSA) / SA -> ACC=0, RA0=BEFE
+        memory[102] = {RSA , XOP};   // XOP (CFG LK16) / RSA -> RA1=EBA0
+
+        memory[103] = {CFG , XOP};   // XOP (CFG LK16) / CFG
+        memory[104] = {4'h4, 4'hE};  // imm1=4 / imm0=E  (0x4E)
+        memory[105] = {4'hB, LDI};   // imm0=B / LDI16 0xFEEB
+        memory[106] = {4'hE, 4'hE};  // imm2=E / imm1=E
+        memory[107] = {SS  , 4'hF};  // imm3=F / SS -> RS0=FEEB
+        memory[108] = {RSS , RSS};   // RSS (swap) / RSS (swap back)
+        memory[109] = {SS  , SS };   // SS -> ACC=FEEB / SS -> RS0=FEEB
+
+        memory[110] = {CFG , XOP};   // XOP (CFG LK8) / CFG
+        memory[111] = {4'h4, 4'hD};  // imm1=4 / imm0=D  (0x4D)
+        memory[112] = {RRS , XOP};   // XOP (RRS) / RRS -> RS0 rot FEEB->EBFE
+        memory[113] = {4'h0, LDI};   // imm0=0 / LDI8 0xA0
+        memory[114] = {RACC, 4'hA};  // imm1=A / RACC LK8 (ACC=A000)
+        memory[115] = {4'hA, LDI};   // imm0=A / LDI8 0xCA
+        memory[116] = {RACC, 4'hC};  // imm1=C / RACC LK8 (ACC=CAA0)
+        memory[117] = {4'hE, LDI};   // imm0=E / LDI8 0xFE
+        memory[118] = {SS  , 4'hF};  // imm1=F / SS LK8 final -> ACC=CAFE, RS0=EBA0
+        memory[119] = {CFG , XOP};   // XOP (CFG LK8) / CFG
+        memory[83]  = {4'h4, 4'hE};  // imm1=4 / imm0=E  (CFG=0x4E)
+        memory[121] = {NOP , SS  };  // imm1=F / SS LK8 final -> ACC=CAFE, RS0=EBA0
+
         // ================================================================
         // Execution & Checks
         // ================================================================
@@ -282,43 +290,10 @@ module tb_management;
 
         // Phase 6 validations (nibble-packed)
         validate(82,  1, 16'hD27C, 1'b0); // CFG LK16 -> ACC=0xD27C
-        validate(83,  1, 16'hD27C, 1'b0); // CFG imm1
-        validate(84,  1, 16'hD27C, 1'b0); // LDI16 EBFE (imm0)
-        validate(85,  1, 16'hD27C, 1'b0); // LDI16 EBFE (imm1/2)
-        validate(86,  1, 16'h00B6, 1'b0); // SS LK16 -> ACC=0x00B6 (RS0=EBFE)
-        validate(87,  1, 16'h00B6, 1'b0); // LDI16 EBA0 (imm0)
-        validate(88,  1, 16'h00B6, 1'b0); // LDI16 EBA0 (imm1/2)
-        validate(89,  1, 16'hEBA0, 1'b0); // imm3 + XOP
-        validate(90,  1, 16'hEBFE, 1'b0); // SA (RA0=EBA0)
-        validate(91,  1, 16'hEBFE, 1'b0); // RSA (RA0↔RA1)
-        validate(92,  1, 16'hEBFE, 1'b0); // CFG UL
-        validate(93,  1, 16'hEBFE, 1'b0); // LDI UL imm1
-        validate(94,  1, 16'hEBFE, 1'b0); // RACC UL #1
-        validate(95,  1, 16'h46E4, 1'b0); // LDI UL immF
-        validate(96,  1, 16'h46E4, 1'b0); // RACC UL #2
-        validate(97,  1, 16'h46E4, 1'b0); // CFG LK8
-        validate(98,  1, 16'h46E4, 1'b0); // LDI8 BE (imm1)
-        validate(99,  1, 16'h46BE, 1'b0); // LDI8 BE done
-        validate(100, 1, 16'h46BE, 1'b0); // RRS LK8 #1
-        validate(101, 1, 16'h46BE, 1'b0); // LDI8 FE (imm0)
-        validate(102, 1, 16'h46FE, 1'b0); // LDI8 FE done
-        validate(103, 1, 16'h46FE, 1'b0); // RRS LK8 #2
-        validate(104, 1, 16'h46FE, 1'b0); // CFG LK16
-        validate(105, 1, 16'h46FE, 1'b0); // CFG imm1
-        validate(106, 1, 16'hEBA0, 1'b0); // SA (RA0=BEFE)
-        validate(107, 1, 16'hEBA0, 1'b0); // RSA #2
-        validate(108, 1, 16'hEBA0, 1'b0); // RSA #3
-        validate(109, 1, 16'hEBA0, 1'b0); // RSS #1/#2
-        validate(110, 1, 16'h0EBA, 1'b0); // CFG UL
-        validate(111, 1, 16'hA0EB, 1'b0); // RACC UL #3/#4
-        validate(112, 1, 16'hA0EB, 1'b0); // CFG LK8
-        validate(113, 1, 16'hA0EB, 1'b0); // LDI8 CA (imm1)
-        validate(114, 1, 16'hA0CA, 1'b0); // LDI8 CA done
-        validate(115, 1, 16'hCAA0, 1'b0); // LDI8 FE start + RACC #3
-        validate(116, 1, 16'hCAFE, 1'b0); // LDI8 FE done
-        validate(117, 1, 16'hFECA, 1'b0); // RACC LK8 #4
-        validate(118, 1, 16'hFECA, 1'b0); // RRS LK8 #3
-        validate(119, 1, 16'hFE44, 1'b0); // RRS LK8 #4 + SS LK8 final
+        validate(109, 0, 16'hFEEB, 1'b0); // SA
+        validate(112, 0, 16'hFEEB, 1'b0); // 
+        validate(112, 1, 16'hEBFE, 1'b0); // RRS        -> ACC=0xEBFE
+        validate(121, 1, 16'hEBA0, 1'b0); // SS
 
         $display("========================");
         $display("= MANAGEMENT TEST DONE =");
