@@ -178,11 +178,11 @@ module tb_management;
         memory[82]  = {CFG , XOP};   // CFG LK16
         memory[83]  = {4'h4, 4'hE};  // imm1=4 / imm0=E  (CFG=0x4E)
 
-        memory[84]  = {4'hA, LDI};   // LDi 0xEBA0                      imm0=A / LDI16 start
-        memory[85]  = {4'hA, 4'hB};  //                                 imm2=A / imm1=B
+        memory[84]  = {4'h0, LDI};   // LDi 0xEBA0                      imm0=A / LDI16 start
+        memory[85]  = {4'hB, 4'hA};  //                                 imm2=A / imm1=B
         memory[86]  = {XOP , 4'hE};  // imm3=E / XOP (SA)
-        memory[87]  = {XOP , SA };   // SA -> ACC=0 / XOP (RSA)
-        memory[88]  = {XOP , RSA};   // RSA -> RA1=EBA0 / XOP (CFG UL)
+        memory[87]  = {XOP , SA };   // SA -> RA0=0xEBA0 & ACC=0x00DE / XOP (RSA)
+        memory[88]  = {XOP , RSA};   // RSA -> RA1=EBA0 & RA0=0xABCD / XOP (CFG UL)
 
         memory[89]  = {4'hC, CFG};   // imm0=C (0x4C) / CFG
         memory[90]  = {LDI , 4'h4};  // imm1=4 / LDI UL 0xE
@@ -211,15 +211,14 @@ module tb_management;
         memory[110] = {CFG , XOP};   // XOP (CFG LK8) / CFG
         memory[111] = {4'h4, 4'hD};  // imm1=4 / imm0=D  (0x4D)
         memory[112] = {RRS , XOP};   // XOP (RRS) / RRS -> RS0 rot FEEB->EBFE
-        memory[113] = {4'h0, LDI};   // imm0=0 / LDI8 0xA0
-        memory[114] = {RACC, 4'hA};  // imm1=A / RACC LK8 (ACC=A000)
-        memory[115] = {4'hA, LDI};   // imm0=A / LDI8 0xCA
-        memory[116] = {RACC, 4'hC};  // imm1=C / RACC LK8 (ACC=CAA0)
-        memory[117] = {4'hE, LDI};   // imm0=E / LDI8 0xFE
-        memory[118] = {SS  , 4'hF};  // imm1=F / SS LK8 final -> ACC=CAFE, RS0=EBA0
-        memory[119] = {CFG , XOP};   // XOP (CFG LK8) / CFG
-        memory[83]  = {4'h4, 4'hE};  // imm1=4 / imm0=E  (CFG=0x4E)
-        memory[121] = {NOP , SS  };  // imm1=F / SS LK8 final -> ACC=CAFE, RS0=EBA0
+        memory[113] = {4'hA, LDI};   // imm0=0 / LDI8 0xA0
+        memory[114] = {RACC, 4'hC};  // imm1=A / RACC LK8 (ACC=A000)
+        memory[115] = {4'h0, LDI};   // imm0=A / LDI8 0xCA
+        memory[116] = {SS, 4'hA};  // imm1=C / RACC LK8 (ACC=CAA0)
+
+        memory[117] = {CFG , XOP};   // XOP (CFG LK8) / CFG
+        memory[118]  = {4'h4, 4'hE};  // imm1=4 / imm0=E  (CFG=0x4E)
+        memory[119] = {NOP , SS  };  // imm1=F / SS LK8 final -> ACC=CAFE, RS0=EBA0
 
         // ================================================================
         // Execution & Checks
@@ -289,11 +288,37 @@ module tb_management;
         validate(81, 1, 16'hD27C, 1'b0); // RSA         -> ACC=0xD27C, RA0=0x00DE, RA1=0xABCD
 
         // Phase 6 validations (nibble-packed)
-        validate(82,  1, 16'hD27C, 1'b0); // CFG LK16 -> ACC=0xD27C
-        validate(109, 0, 16'hFEEB, 1'b0); // SA
-        validate(112, 0, 16'hFEEB, 1'b0); // 
-        validate(112, 1, 16'hEBFE, 1'b0); // RRS        -> ACC=0xEBFE
-        validate(121, 1, 16'hEBA0, 1'b0); // SS
+        validate(82 , 1, 16'hD27C, 1'b0); // CFG LK16   -> ACC=0xD27C
+        validate(86 , 0, 16'hEBA0, 1'b0); // LDI 0xEBA0 -> ACC=0xEBA0
+        validate(87 , 0, 16'h00DE, 1'b0); // SA         -> ACC=0x00DE, RA0=0xEBA0
+        validate(88 , 0, 16'h00DE, 1'b0); // RSA        -> ACC=0x00DE, RA0=0xABCD, RA1=0xEBA0
+        validate(90 , 0, 16'h00DE, 1'b0); // CFG UL     -> ACC=0x00DE
+        validate(91 , 0, 16'h00DE, 1'b0); // LDI 0x4    -> ACC=0x00DE
+        validate(91 , 1, 16'hE00D, 1'b0); // RACC       -> ACC=0xE00D
+        // validate(92 , 1, 16'hE00F, 1'b0); // LDI 0xF    -> ACC=0xE00F
+        validate(93 , 0, 16'hFE00, 1'b0); // RACC       -> ACC=0xFE00
+        validate(95 , 1, 16'hFE00, 1'b0); // CFG LK8    -> ACC=0xFE00
+        validate(97 , 0, 16'hFEBE, 1'b0); // LDI 0xBE   -> ACC=0xFEBE
+        validate(97 , 1, 16'hBEFE, 1'b0); // RACC       -> ACC=0xBEFE
+        validate(98 , 1, 16'hABCD, 1'b0); // SA         -> ACC=0xABCD, RA0=0xBEFE
+        validate(99 , 1, 16'hABCD, 1'b0); // RSA        -> ACC=0xABCD, RA0=0xEBA0, RA1=0xBEFE
+        validate(100, 1, 16'hEBA0, 1'b0); // SA         -> ACC=0xEBA0, RA0=0xABCD
+        validate(101, 1, 16'hABCD, 1'b0); // SA         -> ACC=0xABCD, RA0=0xEBA0
+        validate(102, 1, 16'hABCD, 1'b0); // RSA        -> ACC=0xABCD, RA0=0xBEFE, RA1=0xEBA0
+        validate(104, 1, 16'hABCD, 1'b0); // CFG LK16   -> ACC=0xABCD
+        validate(107, 0, 16'hFEEB, 1'b0); // LDI 0xFEEB -> ACC=0xFEEB
+        validate(107, 1, 16'h00B6, 1'b0); // SS         -> ACC=0x00B6, RS0=0xFEEB
+        validate(108, 0, 16'h00B6, 1'b0); // RSS        -> ACC=0x00B6, RS0=0x2244, RS1=0xFEEB
+        validate(108, 1, 16'h00B6, 1'b0); // RSS        -> ACC=0x00B6, RS0=0xFEEB, RS1=0x2244
+        validate(109, 0, 16'hFEEB, 1'b0); // SS         -> ACC=0xFEEB, RS0=0x00B6
+        validate(109, 1, 16'h00B6, 1'b0); // SS         -> ACC=0x00B6, RS0=0xFEEB
+        validate(111, 1, 16'h00B6, 1'b0); // CFG LK8    -> ACC=0x00B6
+        validate(112, 1, 16'h00B6, 1'b0); // RRS        -> ACC=0x00B6, RS0=0xEBFE
+        validate(114, 0, 16'h00CA, 1'b0); // LDI 0xCA   -> ACC=0x00CA
+        validate(114, 1, 16'hCA00, 1'b0); // RACC       -> ACC=0xCA00
+        validate(116, 0, 16'hCAA0, 1'b0); // LDI 0xA0   -> ACC=0xCAA0
+        validate(116, 1, 16'hCAFE, 1'b0); // SS         -> ACC=0xCAFE, RS0=0xEBA0
+        validate(117, 1, 16'hEBA0, 1'b0); // SS
 
         $display("========================");
         $display("= MANAGEMENT TEST DONE =");
