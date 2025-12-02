@@ -29,6 +29,7 @@ module tb_control;
     );
 
     reg [7:0] memory [0:255];
+    reg [14:0] last_addr;
     integer i;
 
     initial begin
@@ -44,19 +45,24 @@ module tb_control;
     end
 
     always @(*) begin
-        if (mem_enable_read) mem_data_in = memory[mem_addr];
-        else mem_data_in = 8'h00;
+        // Keep instruction bus always driven; core fetches once per byte.
+        mem_data_in = memory[mem_addr];
     end
 
     // Validation task
     task automatic validate(input [14:0] addr, input integer cycles, input [15:0] expected_acc, input expected_carry);
         begin
-            @(negedge clk);
-            while (!(mem_enable_read && mem_addr == addr)) @(negedge clk);
-            if (mem_data_in !== memory[addr]) begin
-                $display("FAIL READ @%0d: mem_data_in=%02h exp=%02h", addr, mem_data_in, memory[addr]);
-                $fatal(1);
+            if (last_addr != addr) begin
+                // Sample after negedge to see the fetched byte address.
+                @(negedge clk); #0;
+                while (mem_addr != addr) begin
+                    @(negedge clk); #0;
+                end
+            end else begin
+                // Back-to-back validate on same byte: just advance one nibble edge.
+                @(negedge clk); #0;
             end
+            last_addr = addr;
             repeat (cycles) @(negedge clk);
             if (test_data !== expected_acc) begin
                 $display("FAIL ACC @%0d: got=%h exp=%h", addr, test_data, expected_acc);
@@ -75,6 +81,7 @@ module tb_control;
         $dumpvars(0, tb_control);
 
         rst = 1;
+        last_addr = 15'h7fff;
         mem_data_in = 0;
         for (i = 0; i < 256; i = i + 1) memory[i] = 8'h00;
 

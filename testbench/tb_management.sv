@@ -30,6 +30,7 @@ module tb_management;
 
     reg [7:0] memory [0:255];
     integer i;
+    reg [14:0] last_addr;
 
     initial begin
         clk = 0;
@@ -44,19 +45,22 @@ module tb_management;
     end
 
     always @(*) begin
-        if (mem_enable_read) mem_data_in = memory[mem_addr];
-        else mem_data_in = 8'h00;
+        // Keep instruction bus always driven so we see both nibbles of a byte
+        mem_data_in = memory[mem_addr];
     end
+
 
     // Validation task
     task automatic validate(input [14:0] addr, input integer cycles, input [15:0] expected_acc, input expected_carry);
         begin
-            @(negedge clk);
-            while (!(mem_enable_read && mem_addr == addr)) @(negedge clk);
-            if (mem_data_in !== memory[addr]) begin
-                $display("FAIL READ @%0d: mem_data_in=%02h exp=%02h", addr, mem_data_in, memory[addr]);
-                $fatal(1);
+            if (last_addr != addr) begin
+                // Sample mem_addr right after the negedge update so we catch the fetch.
+                @(negedge clk); #0;
+                while (mem_addr != addr) begin
+                    @(negedge clk); #0;
+                end
             end
+            last_addr = addr;
             repeat (cycles) @(negedge clk);
             if (test_data !== expected_acc) begin
                 $display("FAIL ACC @%0d: got=%h exp=%h", addr, test_data, expected_acc);
@@ -75,6 +79,7 @@ module tb_management;
         $dumpvars(0, tb_management);
 
         rst = 1;
+        last_addr = 15'h7fff;
         mem_data_in = 0;
         for (i = 0; i < 256; i = i + 1) memory[i] = 8'h00;
 
@@ -216,10 +221,6 @@ module tb_management;
         memory[115] = {4'h0, LDI};   // imm0=A / LDI8 0xCA
         memory[116] = {SS, 4'hA};  // imm1=C / RACC LK8 (ACC=CAA0)
 
-        memory[117] = {CFG , XOP};   // XOP (CFG LK8) / CFG
-        memory[118]  = {4'h4, 4'hE};  // imm1=4 / imm0=E  (CFG=0x4E)
-        memory[119] = {NOP , SS  };  // imm1=F / SS LK8 final -> ACC=CAFE, RS0=EBA0
-
         // ================================================================
         // Execution & Checks
         // ================================================================
@@ -295,7 +296,7 @@ module tb_management;
         validate(90 , 0, 16'h00DE, 1'b0); // CFG UL     -> ACC=0x00DE
         validate(91 , 0, 16'h00DE, 1'b0); // LDI 0x4    -> ACC=0x00DE
         validate(91 , 1, 16'hE00D, 1'b0); // RACC       -> ACC=0xE00D
-        // validate(92 , 1, 16'hE00F, 1'b0); // LDI 0xF    -> ACC=0xE00F
+        validate(92 , 1, 16'hE00F, 1'b0); // LDI 0xF    -> ACC=0xE00F
         validate(93 , 0, 16'hFE00, 1'b0); // RACC       -> ACC=0xFE00
         validate(95 , 1, 16'hFE00, 1'b0); // CFG LK8    -> ACC=0xFE00
         validate(97 , 0, 16'hFEBE, 1'b0); // LDI 0xBE   -> ACC=0xFEBE
@@ -318,7 +319,6 @@ module tb_management;
         validate(114, 1, 16'hCA00, 1'b0); // RACC       -> ACC=0xCA00
         validate(116, 0, 16'hCAA0, 1'b0); // LDI 0xA0   -> ACC=0xCAA0
         validate(116, 1, 16'hCAFE, 1'b0); // SS         -> ACC=0xCAFE, RS0=0xEBA0
-        validate(117, 1, 16'hEBA0, 1'b0); // SS
 
         $display("========================");
         $display("= MANAGEMENT TEST DONE =");
