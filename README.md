@@ -77,6 +77,7 @@ Notes:
 ## Main Instructions:
 - **Not Mandatory / Custom Instructions**: Opcodes marked “not mandatory” may be used for custom extensions by implementers. Code that uses them is not compatible with baseline MISA-O cores.
 - **INV**: `ACC ← ~ACC` within the active width W (4/8/16); *flags unchanged*.
+- **SHL/SHR**: Shift ACC Left/Right by 1 bit; the outgoing bit goes to Carry, and the vacated side is filled with 0.
 - **RACC/RRS**: Rotate Accumulator / Register Source - It will treat ACC/RS0 as a single register and shift rotate it by "Operation mode" size to the right; In LK16 mode, this instruction has no effect (NOP).
 - **RSS/RSA**: It will treat RS/RA as a stack and rotate it *(currently looks like a swap, but later on if more register where added it will truly rotate)*.
 - **SS**:  Swaps the contents of **ACC** *with* source operand register 0 (**RS0**), respecting the active **W** (word-size) configuration: `ACC ↔ RS0 (W-bits)`.
