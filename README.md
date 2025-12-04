@@ -78,6 +78,11 @@ Notes:
 ## Main Instructions:
 - **Not Mandatory / Custom Instructions**: Opcodes marked “not mandatory” may be used for custom extensions by implementers. Code that uses them is not compatible with baseline MISA-O cores.
 - **INV**: `ACC ← ~ACC` within the active width W (4/8/16); *flags unchanged*.
+- **ADD(i)**: `ACC ← ACC + ( RS0 | #imm)` within the active width W (4/8/16); Updates `C` with `Carry-out`.
+- **SUB(i)**: `ACC ← ACC - ( RS0 | #imm)` within the active width W (4/8/16); Updates `C` with `Borrow`.
+- **AND(i)**: `ACC ← ACC & ( RS0 | #imm)` within the active width W (4/8/16); *flags unchanged*.
+- **OR(i)**: `ACC ← ACC | ( RS0 | #imm)` within the active width W (4/8/16); *flags unchanged*.
+- **XOR(i)**: `ACC ← ACC ^ ( RS0 | #imm)` within the active width W (4/8/16); *flags unchanged*.
 - **SHL/SHR**: Shift ACC Left/Right by 1 bit; the outgoing bit goes to Carry, and the vacated side is filled with 0.
 - **RACC/RRS**: Rotate Accumulator / Register Source - It rotates ACC/RS0 by W bits (4/8), wrapping around; in LK16 it has no effect (NOP).
 - **RSS/RSA**: It will treat RS/RA as a stack and rotate it *(currently looks like a swap, but later on if more registers were added it will truly rotate)*.
@@ -91,8 +96,8 @@ Notes:
 - **Branches** (PC-relative): If (cond): **PC ← PC_next + ( *sign_extend*(BW ? imm8 : imm4) << (BRS ? 2 : 0) )**; Else: **PC ← PC_next**; *flags unchanged*. **ATTENTION**: **BEQz** has a special behaviour if it's executed after a **CMP** instruction.
   - **BEQz #imm**: If preceded by CMP: branch if `ZERO=1`. Else: branch if `ACC==0`. Always clears ZERO.
   - **BC   #imm**: Branch if `Carry C == 1`.
-  - **BTST #imm**: Tests bit `ACC[idx]` where `idx = RS0[3:0]`; sets `C = ACC[idx]`; `ACC` not written.
-  - **TST  #imm**: Uses **RS0** as a mask to **ACC** (`tmp = ACC & RS0`); sets `C = 1` if `tmp != 0`, else `C = 0`; `ACC` not written (limited by current link width).
+  - **BTST(i)**  : Tests bit `ACC[idx]` where `idx = RS0[3:0] | #imm`; sets `C = ACC[idx]`; `ACC` not written.
+  - **TST(i)**   : Uses **RS0** as a mask to **ACC**: `tmp = ACC & (RS0 | #imm)`; sets `C = 1` if `tmp != 0`, else `C = 0`; `ACC` not written (limited by current link width).
 - **XOP**: Executes next instruction as Extended Operation.
 - **XMEM #f**: Extended Memory Operations (opcode 1100 + 4-bit function):
   - Function:
