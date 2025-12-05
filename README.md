@@ -18,15 +18,15 @@ Accumulators can be linked into wider configurations (2×8-bit or 1×16-bit), wh
   - RA0: Active address.
   - RA1: Return address.
 - 1x8-bit CFG (Configuration) register.
-  - [7]: IMM - Immediate instruction mode (0: disable / 1: enable). Reset: 0 (disable).
+  - [7]: Reserved, (reads as 0; writes ignored).
   - [6]: BW - Branch immediate width. Reset: 0 (imm4).
     -  0: imm4 (4-bit total)
     -  1: imm8 (8-bit total)
   - [5]: BRS - Branch relative scale. Reset: 0 (<<0).
     - 0: shift by 0, 1-byte step (Default).
     - 1: shift by 2, 4-byte step.
-  - [4]: IE: Interrupts (0: disable / 1: enable). Reset: 0 (disable).
-  - [3]: CEN - Carry (1: enable / 0: disable). Reset: 0 (disable).
+  - [4]: IE - Interrupts (0: disable / 1: enable). Reset: 0 (disable).
+  - [3]: IMM - Immediate instruction mode (0: disable / 1: enable). Reset: 0 (disable).
   - [2]: SIGN - Signed mode (1: signed / 0: unsigned). Reset: 0 (unsigned).
   - [1:0]: W - LINK - Link Mode:
     - 2b00: UL (Unlinked) - 4-bit mode (Default).
@@ -37,11 +37,11 @@ Accumulators can be linked into wider configurations (2×8-bit or 1×16-bit), wh
 #### CFG Table:
 | Bit | Name     | Default | Description                                                  |
 |-----|----------|---------|--------------------------------------------------------------|
-|  7  | IMM      |    0    | Changes arithmetic operations to work with immediate values. |
+|  7  | Reserved |    0    | Reads as 0, writes ignored.                                  |
 |  6  | BW       |    0    | Branch immediate width: 0=imm4, 1=imm8                       |
 |  5  | BRS      |    0    | Branch relative scale: 0=×1, 1=×4 (<<2)                      |
 |  4  | IE       |    0    | Interrupt enable                                             |
-|  3  | CEN      |    0    | Carry enable                                                 |
+|  3  | IMM      |    0    | Changes arithmetic operations to work with immediate values. |
 |  2  | SIGN     |    0    | Signed arithmetic mode                                       |
 | 1:0 | W (LINK) |   00    | Accumulator link width: UL(4), LK8, LK16, reserved           |
 
@@ -78,10 +78,10 @@ Notes:
 ## Main Instructions:
 - **Not Mandatory / Custom Instructions**: Opcodes marked “not mandatory” may be used for custom extensions by implementers. Code that uses them is not compatible with baseline MISA-O cores.
 - **INV**: `ACC ← ~ACC` within the active width W (4/8/16); *flags unchanged*.
-- **ADD/ADDI**: `ACC ← ACC + OP2` within the active width W (4/8/16); updates `C` with carry-out.
+- **ADD/ADDI**: `ACC ← ACC + OP2` within the active width W (4/8/16); updates `C` with carry-out; carry-in is always treated as 0.
   - If `IMM = 0`: `OP2 = RS0`.
   - If `IMM = 1`: `OP2 = imm_W` (the immediate value zero-extended to W bits).
-- **SUB/SUBI**: `ACC ← ACC - OP2` within the active width W (4/8/16); updates `C` with borrow.
+- **SUB/SUBI**: `ACC ← ACC - OP2` within the active width W (4/8/16); updates `C` with borrow; carry-in is always treated as 0.
   - If `IMM = 0`: `OP2 = RS0`.
   - If `IMM = 1`: `OP2 = imm_W`.
 - **AND/ANDI**: `ACC ← ACC & OP2` within the active width W (4/8/16); *flags unchanged*.
@@ -93,6 +93,7 @@ Notes:
 - **XOR/XORI**: `ACC ← ACC ^ OP2` within the active width W (4/8/16); *flags unchanged*.
   - If `IMM = 0`: `OP2 = RS0`.
   - If `IMM = 1`: `OP2 = imm_W`.
+- **INC/DEC**: Increment/Decrement ACC by 1; updates `C` with carry-out/borrow; carry-in is always treated as 0.
 - **SHL/SHR**: Shift ACC Left/Right by 1 bit; the outgoing bit goes to Carry, and the vacated side is filled with 0.
 - **RACC/RRS**: Rotate Accumulator / Register Source - It rotates ACC/RS0 by W bits (4/8), wrapping around; in LK16 it has no effect (NOP).
 - **RSS/RSA**: It will treat RS/RA as a stack and rotate it *(currently looks like a swap, but later on if more registers were added it will truly rotate)*.
@@ -134,16 +135,24 @@ Notes:
       - **UL**: `tmp ← [addr]; tmp[3:0] ← ACC[3:0]; [addr] ← tmp`
     - If `AM=1`: `addr ← addr + (DIR ? −stride : +stride)`
     - Flags: **unchanged**.
-- **Carry**: CEN: when 1, ADD/SUB/INC/DEC use carry/borrow-in and update C; when 0, carry-in is forced to 0 (C still updated):
-  - **ADD/INC**: Carry-out.
-  - **SUB/DEC**: Borrow (C = 1).
-  - **SHL/SHR**: Holds expelled bit.
 
-### Notes:
-- Branch
-  - BW/BRS are global (from CFG). Keep them constant within a function.
-  - With imm4 and large scaling (e.g., <<2), targets should be aligned accordingly to avoid padding.
-  - Taking a branch does not modify flags and clears any pending XOP.
+### **Carry Flag (C)**
+
+The carry flag (C) is **always updated** by arithmetic and shift operations, but it is **never consumed as carry-in**.
+All arithmetic operations treat carry-in as **zero**.
+
+- **ADD / INC**: `C = carry-out`
+- **SUB / DEC**: `C = NOT(borrow-out)`
+- **SHL / SHR**: `C = expelled bit`
+
+Carry is therefore a **status output only**, not an arithmetic input.
+This guarantees deterministic behavior and simplifies multi-precision code.
+
+### Branch:
+
+- BW/BRS are global (from CFG). Keep them constant within a function.
+- With imm4 and large scaling (e.g., <<2), targets should be aligned accordingly to avoid padding.
+- Taking a branch does not modify flags and clears any pending XOP.
  
 ## Optional Instructions:
 
@@ -264,11 +273,11 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
 
 **LK**: Link was demoted to be replaced by a more versatile "Swap Configuration", now it's possible to enable auto-increment when reading/writing from/to memory with the advantage of also be able to secure a known working state for the functions.
 
-**Branches**: Planned to be based on ra0, under some consideration it was changed to immediate value. Because of the small quantity of registers this seems more reasonable, but could be changed back to utilize ra0.
+**Branches**: Planned to be based on RA0, under some consideration it was changed to immediate value. Because of the small quantity of registers this seems more reasonable, but could be changed back to utilize RA0.
 
 **SS/SA & CFG**: SS and SA was initially designed for quick register swapping, this design was adjusted to allow partial swaps respecting **W** (useful for endianness control). To complement this, **CFG** now supports immediate loading, easing state management and reducing register pressure. **SA** remains a full 16-bit swap for address manipulation, as partial swaps provide little benefit in this context.
 
-**Multiply**: The area/power cost of a hardware multiplier is high for this class of core, and the **base opcode map is full**. Comparable minimal CPUs also omit MUL. Software emulation (shift-add) handles 4/8/16-bit cases well — especially with *CEN* and *CC* — so the practical impact is low. But there is a plan to create an extension (CFG reserved = 1) that will replace non-mandatory instructions by new ones, like **MAD**, DIV, Vector MAD or other arithmetic operations. The idea behind having MUL instruction is to keep open the possibility of an implementation that could run DOOM.
+**Multiply**: The area/power cost of a hardware multiplier is high for this class of core, and the **base opcode map is full**. Comparable minimal CPUs also omit MUL. Software emulation (shift-add) handles 4/8/16-bit cases well, so the practical impact is low. But there is a plan to create an extension (CFG reserved = 1) that will replace non-mandatory instructions by new ones, like **MAD**, DIV, Vector MAD or other arithmetic operations. The idea behind having MUL instruction is to keep open the possibility of an implementation that could run DOOM.
 
 **CSR Bank (Control & Extensions)**: To support richer control, debugging and future extensions, MISA-O also reserves space for a small CSR bank (up to 16 × 16-bit registers, 32 bytes total), exposed via optional `CSRLD`/`CSRST` instructions that reuse RACC/RRS opcodes in LK16 and use their immediate nibble as index. This CSR bank can host core control bits, extended interrupt state or configuration for the MAD profile and other vendor-specific features, without bloating the baseline register file. As with the arithmetic extensions, CSR access is initially treated as a custom/optional feature to be prototyped and validated before being committed to the core specification.
 
