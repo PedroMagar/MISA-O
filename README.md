@@ -35,21 +35,21 @@ Accumulators can be linked into wider configurations (2×8-bit or 1×16-bit), wh
     - 2b11: Reserved - Future use.
 
 #### CFG Table:
-| Bit | Name     | Default | Description                                                  |
-|-----|----------|---------|--------------------------------------------------------------|
-|  7  | Reserved |    0    | Reads as 0, writes ignored.                                  |
-|  6  | BW       |    0    | Branch immediate width: 0=imm4, 1=imm8                       |
-|  5  | BRS      |    0    | Branch relative scale: 0=×1, 1=×4 (<<2)                      |
-|  4  | IE       |    0    | Interrupt enable                                             |
-|  3  | IMM      |    0    | Changes arithmetic operations to work with immediate values. |
-|  2  | SIGN     |    0    | Signed arithmetic mode                                       |
-| 1:0 | W (LINK) |   00    | Accumulator link width: UL(4), LK8, LK16, reserved           |
+| Bit | Name     | Default | Description                                                                                |
+|-----|----------|---------|--------------------------------------------------------------------------------------------|
+|  7  | Reserved |    0    | Reads as 0, writes ignored.                                                                |
+|  6  | BW       |    0    | Branch immediate width: 0=imm4, 1=imm8                                                     |
+|  5  | BRS      |    0    | Branch relative scale: 0=×1, 1=×4 (<<2)                                                    |
+|  4  | IE       |    0    | Interrupt enable                                                                           |
+|  3  | IMM      |    0    | When set, selected ALU opcodes use an embedded immediate instead of RS0 as second operand. |
+|  2  | SIGN     |    0    | Signed arithmetic mode                                                                     |
+| 1:0 | W (LINK) |   00    | Accumulator link width: UL(4), LK8, LK16, reserved                                         |
 
 
 ## Instructions
 The following table lists the architecture instructions:
 
-|Binary|Default   |Extended  |Description                                         |
+|Binary| Default  | Extended | Description                                        |
 |------|----------|----------|----------------------------------------------------|
 | 0001 |CC        |CFG       | Clear Carry / Swap Configuration                   |
 | 0101 |AND       |INV       | AND / Invert                                       |
@@ -72,8 +72,16 @@ Notes:
 - \* : Not mandatory instructions.
 - **Bold**: Newly added / under review.
 - **WFI**: Wait-For-Interrupt was promoted to keep consistency on all non-mandatory instructions, the **MAD** instruction that it replaced could be part of a new extension (CFG reserved = 1) together with DIV and others math operations.
-- **SIA**: Swap Software Interrupt (SIA) was removed due to a need for a non-destructive compare, in order to keep the interrupt working, interrupt address will be memory mapped (like CFG) at address 1.
-- **RACC/RRS**: In LK16 mode, RACC/RRS opcodes may be reassigned to CSRLD/CSRST, enabling direct access to up to 16 CSRs using its immediate nibble as index.
+- **RACC/RRS**: In LK16 mode, their opcode is reused for **CSRLD/CSRST**, and no rotation is available at 16-bit width.
+
+### Special Instruction - LK16 Only
+
+Since ACC/RS0 rotation would became useless at LK16 mode, in LK16 mode this instruction will have a special behavior of accessing CSRs.
+
+| Mode |Binary| Type      | Name     | Description                                                     |
+|------|------|-----------|----------|-----------------------------------------------------------------|
+| LK16 | 0110 |*Default*  |**CSRLD** | *Load CSR*: loads CSR indexed by **#imm (0–15)** into **ACC**   |
+| LK16 | 0110 |*Extended* |**CSRST** | *Store CSR*: writes **ACC** into CSR indexed by **#imm (0–15)** |
 
 ## Main Instructions:
 - **Not Mandatory / Custom Instructions**: Opcodes marked “not mandatory” may be used for custom extensions by implementers. Code that uses them is not compatible with baseline MISA-O cores.
@@ -102,7 +110,7 @@ Notes:
 - **JAL/JMP**: All jumps will be based on register RA0, but linking would be saved on RA1.
   - **JAL**: `RA1 ← PC_next`; `PC ← RA0`
   - **JMP**: `PC ← RA0`
-- **CFG #imm**: Loads the *immediate* (**#imm**) value into the **CFG** register. The **CFG** register is also *memory-mapped* at address **0x00** for direct access. *(Useful for changing link width (W) or enabling features without register overhead.)*
+- **CFG #imm**: Loads the *immediate* (**#imm**) value into the **CFG** register. The **CFG** register can also be accessed at `CSR 0` for reading. *(Useful for changing link width (W) or enabling features without register overhead.)*
 - **CMP**: Compares **ACC** with **RS0** by subtraction (respecting **W**), updates carry/borrow and an internal ZERO flag. If the next instruction is **BEQz**, it uses this ZERO flag instead of reading ACC directly. `ZERO` flag will clear itself if the next instruction is not BEQz.
 - **Branches** (PC-relative): If (cond): **PC ← PC_next + ( *sign_extend*(BW ? imm8 : imm4) << (BRS ? 2 : 0) )**; Else: **PC ← PC_next**; *flags unchanged*. **ATTENTION**: **BEQz** has a special behaviour if it's executed after a **CMP** instruction.
   - **BEQz #imm**: If preceded by CMP: branch if `ZERO=1`. Else: branch if `ACC==0`. Always clears ZERO.
@@ -135,6 +143,8 @@ Notes:
       - **UL**: `tmp ← [addr]; tmp[3:0] ← ACC[3:0]; [addr] ← tmp`
     - If `AM=1`: `addr ← addr + (DIR ? −stride : +stride)`
     - Flags: **unchanged**.
+  - **CSRLD #imm**: Loads CSR into ACC (more details on CSR section).
+  - **CSRST #imm**: Write ACC into CSR (more details on CSR section).
 
 ### **Carry Flag (C)**
 
@@ -154,9 +164,114 @@ This guarantees deterministic behavior and simplifies multi-precision code.
 - With imm4 and large scaling (e.g., <<2), targets should be aligned accordingly to avoid padding.
 - Taking a branch does not modify flags and clears any pending XOP.
  
-## Optional Instructions:
+## CSR Bank (Control & Extensions)
 
-### Interrupts:
+MISA-O defines a small CSR (Control and Status Register) bank to expose core configuration, flags and optional extension state without bloating the general register file. The bank is addressed by a 4-bit index (0–15), each CSR being 16-bit wide.
+
+Access is performed through two instructions:
+
+- **CSRLD #idx**: `ACC ← CSR[idx]` (16-bit read into ACC)
+- **CSRST #idx**: `CSR[idx] ← ACC` (16-bit write from ACC)
+
+In **UL/LK8** modes, the opcodes `RACC` / `RRS` behave as rotate instructions as described earlier. In **LK16** mode, the same opcodes may be reassigned to `CSRLD` / `CSRST`, using an immediate nibble as CSR index.
+
+### CSR implementation profiles
+
+Two implementation profiles are envisaged:
+
+- **Compact profile**: only the minimal CSR set is implemented (CSR0 is mandatory). All unimplemented CSRs read as `0` and ignore writes. This keeps area and complexity close to the original MISA-O core.
+
+- **Full profile**: additional CSRs are implemented for richer interrupt handling, debugging and arithmetic extensions (MAD profile). Software must not rely on any CSR beyond CSR0 unless the target profile is explicitly known.
+
+### CSR layout (proposed)
+
+The following layout is recommended, but only CSR0 is mandatory for baseline compliance:
+
+| Idx | Name     | Description                                        | Profile  |
+|-----|----------|----------------------------------------------------|----------|
+| 0   | CORECFG  | Core configuration and flags (CFG + C/Z/N/V)       | required |
+| 1   | INTBASE  | Interrupt base page (IA alias)                     | full     |
+| 2   | INTSTAT  | Interrupt status / cause (in-ISR, pending, cause)  | full     |
+| 3   | INTCFG   | Fine-grain interrupt mask / nesting control        | full     |
+| 4   | MADCFG   | MAD profile configuration (enable, shift, satur.)  | full     |
+| 5   | MADSTAT  | MAD status (busy/overflow)                         | full     |
+| 6–7 | RSV-MAD  | Reserved for future arithmetic / vendor extensions | full     |
+| 8–15| RSV      | Reserved                                           | —        |
+
+#### CSR0 – CORECFG (mandatory)
+
+`CSR0` combines the existing `CFG` register and the main ALU flags into a single 16-bit view:
+
+- Bits [7:0]  → `CFG` (same layout and semantics as described in the CFG table).
+- Bit  [8]    → `C` (carry flag).
+- Bit  [9]    → `Z` (zero flag).
+- Bit  [10]   → `N` (negative flag; sign of ACC under current W mode).
+- Bit  [11]   → `V` (overflow flag for signed ADD/SUB).
+- Bits [15:12] → reserved (read as 0, writes ignored).
+
+Semantics:
+
+- `CSRLD #0` reads back `CFG` and ALU flags into `ACC`.
+- `CSRST #0` writes `CFG` from `ACC[7:0]`. Flag bits [11:8] are typically read-only from software; writes are ignored or treated as debug-only in full-featured implementations.
+
+This CSR allows debuggers, monitors and OS-like code to inspect and modify core configuration without relying on memory-mapped views.
+
+#### CSR1–CSR3 – Interrupt CSRs (full profile, optional)
+
+- **CSR1 – INTBASE**: exposes the interrupt page MSB (`IA`) to software.
+
+  - Bits [7:0]  → `IA` (Interrupt Address page MSB).
+  - Bits [15:8] → reserved.
+
+  `CSRLD #1` reads the current `IA`, and `CSRST #1` updates it using `ACC[7:0]`. This is an alias of the existing `IA` register and does not require an extra physical register.
+
+- **CSR2 – INTSTAT** (optional): interrupt status and cause.
+
+  A typical layout is:
+
+  - Bit 0  → `IN_ISR`   (1 when executing inside an ISR).
+  - Bit 1  → `PENDING`  (1 if any interrupt is pending).
+  - Bits 4:2 → `CAUSE`  (encoded interrupt cause: external, SWI, timer, etc.).
+  - Bits 15:5 → reserved.
+
+  Compact implementations may return 0 and ignore writes.
+
+- **CSR3 – INTCFG** (optional): fine-grain interrupt configuration.
+
+  Example layout:
+
+  - Bit 0 → `SWI_EN`   (software interrupt enable).
+  - Bit 1 → `EXT_EN`   (external interrupt enable).
+  - Bit 2 → `NEST_EN`  (allow nested interrupts).
+  - Bits 15:3 → reserved.
+
+  This CSR complements the global `IE` bit in `CFG` without being required for
+  basic interrupt support.
+
+#### CSR4–CSR5 – MAD profile CSRs (full profile, optional)
+
+These CSRs are only meaningful when the MAD profile (Multiply-Add &
+Derivatives) is implemented.
+
+- **CSR4 – MADCFG**: MAD configuration.
+
+  - Bit 0   → `MAD_EN`   (enable MAD profile; when 0, MAD opcodes may behave
+                          as NOP or trap).
+  - Bits 2:1 → `MAD_SHIFT` (post-scaling shift applied to the 16-bit accumulator).
+  - Bit 3   → `MAD_SAT`  (0 = wrap, 1 = saturating mode).
+  - Bits 7:4 and 15:8 → reserved or vendor-specific.
+
+- **CSR5 – MADSTAT** (optional): MAD status.
+
+  - Bit 0 → `MAD_BUSY` (if MAD is multi-cycle; otherwise always 0).
+  - Bit 1 → `MAD_OVF`  (overflow indicator in the accumulator).
+  - Bits 15:2 → reserved.
+
+Compact implementations of the MAD profile may hard-wire these fields to 0 or ignore writes, while full implementations can use them to expose richer control and diagnostic information.
+
+## Profiles:
+
+### Interrupt Profile:
 
 #### Mapping:
 | Offset    | Description                | Width |
@@ -171,7 +286,7 @@ This guarantees deterministic behavior and simplifies multi-precision code.
     - The CPU **stores PC_next, CFG/FLAGS, ACC, RS0/RS1, RA0/RA1** at fixed offsets in page `ia` (see layout below),
     - latches `IAR ← IA`, **clears IE**, clears any pending **XOP**, and
     - **jumps to** `IA<<8 + 0x10` (the ISR entry).
-    - Interrupt address register (`IA`) is memory mapped at address 1 (0x0001).
+    - Interrupt address register (`IA`) is mapped at `CSR 1`.
   - **WFI\***: Wait-For-Interrupt makes the processor sleep until an interrupt sign is received.
   - **SWI\***: Triggers a software interrupt; flow identical to an external IRQ: autosave on the ia page, latches `IAR←IA`, clears IE (`IE←0`) and jumps to `IA<<8 + 0x10`.
   - **RETI\***: Restores state from the *IAR* page and resumes execution.
@@ -204,6 +319,10 @@ This guarantees deterministic behavior and simplifies multi-precision code.
       +0x10 : ISR entry (first instruction executed on entry)
 ```
 
+### MAD Profile:
+
+TO-DO
+
 ### Development (Candidate Instructions)
 
 The table below lists **candidate instructions** that are *not part of the baseline ISA* but are being evaluated for future inclusion.
@@ -212,12 +331,10 @@ These entries **do not represent actual opcode encodings**; the binary field is 
 Implementers must **not** rely on these encodings.
 When promoted, each instruction will receive a proper unique opcode assignment within the official map.
 
-| Binary (placeholder) | Instruction | Notes                                                                                                          |
-| -------------------- | ----------- | -------------------------------------------------------------------------------------------------------------- |
-| 0000                 | **CLR**     | Proposed *Clear* ACC instruction.                                                                              |
-| 0000                 | **SDI**     | *Send/Signal Interrupt* — software-triggered signaling mechanism.                                              |
-| 0000                 | **CSRLD**   | *Load CSR*: loads CSR indexed by **#imm (0–15)** into **ACC**; intended to reuse **RACC** opcode in **LK16**.  |
-| 0000                 | **CSRST**   | *Store CSR*: writes **ACC** into CSR indexed by **#imm (0–15)**; intended to reuse **RRS** opcode in **LK16**. |
+| Binary (placeholder) | Instruction | Notes                                                             |
+| -------------------- | ----------- | ----------------------------------------------------------------- |
+| 0000                 | **CLR**     | Proposed *Clear* ACC instruction.                                 |
+| 0000                 | **SDI**     | *Send/Signal Interrupt* — software-triggered signaling mechanism. |
 
 **Purpose:**
 This table serves only as a **staging area** for instructions under evaluation.
@@ -226,7 +343,7 @@ Entries may be changed, merged, promoted or removed without affecting ISA compat
 The reference implementation (located at "/design/misa-o_ref.sv") is not made to be performant, efficient, optimal or even synthesizable; its main purpose is to be simple to interpret while also serving as a playground to test the ISA instructions.
 
 ### How to run
-To run you must have installed icarus verilog (iverilog) and GTKWAVE, open terminal on "/scripts", from there execute the scripts in it.
+To run you must have installed icarus verilog (iverilog) and GTKWAVE, open terminal on root directory, from there execute run_tb.bat (windows) or run_tb.sh (linux).
 
 #### Scripts
 - misa-o_b.sh: Build script, utilized to see if the project is currently building.
@@ -279,6 +396,6 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
 
 **Multiply**: The area/power cost of a hardware multiplier is high for this class of core, and the **base opcode map is full**. Comparable minimal CPUs also omit MUL. Software emulation (shift-add) handles 4/8/16-bit cases well, so the practical impact is low. But there is a plan to create an extension (CFG reserved = 1) that will replace non-mandatory instructions by new ones, like **MAD**, DIV, Vector MAD or other arithmetic operations. The idea behind having MUL instruction is to keep open the possibility of an implementation that could run DOOM.
 
-**CSR Bank (Control & Extensions)**: To support richer control, debugging and future extensions, MISA-O also reserves space for a small CSR bank (up to 16 × 16-bit registers, 32 bytes total), exposed via optional `CSRLD`/`CSRST` instructions that reuse RACC/RRS opcodes in LK16 and use their immediate nibble as index. This CSR bank can host core control bits, extended interrupt state or configuration for the MAD profile and other vendor-specific features, without bloating the baseline register file. As with the arithmetic extensions, CSR access is initially treated as a custom/optional feature to be prototyped and validated before being committed to the core specification.
+**CSR Bank (Control & Extensions)**: To support richer control, debugging and future extensions, MISA-O also reserves space for a small CSR bank (up to 16 × 16-bit registers, 32 bytes total), exposed via optional `CSRLD`/`CSRST` instructions that reuse the RACC/RRS opcodes in LK16 and use the instruction’s immediate nibble as CSR index (0–15). This CSR bank can host core control bits, extended interrupt state or configuration for the MAD profile and other vendor-specific features, without bloating the baseline register file. As with the arithmetic extensions, CSR access is initially treated as a custom/optional feature to be prototyped and validated before being committed to the core specification.
 
 **MAD Profile**: A complementary *MAD Profile (Multiply-Add & Derivatives)* is under evaluation to extend the arithmetic capabilities of MISA-O without impacting the baseline datapath. This profile introduces a compact MAD unit (8-bit×8-bit → 16-bit accumulate) along with lightweight arithmetic helpers such as MIN/MAX, enabling more efficient inner loops for graphics, audio and fixed-point workloads. The profile may also integrate access to a small bank of CSRs to expose configuration, control or per-function state with lower software overhead. Both the MAD unit and the CSR mechanism remain optional and experimental: they are implemented as custom extensions first, allowing area/latency evaluation before deciding whether promotion into an official profile is justified.
