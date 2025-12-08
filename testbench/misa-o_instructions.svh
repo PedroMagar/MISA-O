@@ -32,9 +32,13 @@ localparam [3:0] JMP  = 4'b0010;
 localparam [3:0] RRS  = 4'b0110;
 localparam [3:0] RSA  = 4'b1010;
 localparam [3:0] SA   = 4'b1110;
-localparam [3:0] SIA  = 4'b0100;
+localparam [3:0] CMP  = 4'b0100;
 localparam [3:0] RETI = 4'b1100;
 localparam [3:0] SWI  = 4'b1000;
 localparam [3:0] WFI  = 4'b0000;
+
+// Special Instructions
+localparam [3:0] CSRLD = 4'b0110;
+localparam [3:0] CSRST = 4'b0110;
 
 `endif
