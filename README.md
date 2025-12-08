@@ -183,91 +183,113 @@ Two implementation profiles are envisaged:
 
 - **Full profile**: additional CSRs are implemented for richer interrupt handling, debugging and arithmetic extensions (MAD profile). Software must not rely on any CSR beyond CSR0 unless the target profile is explicitly known.
 
-### CSR layout (proposed)
+### CSR layout
 
 The following layout is recommended, but only CSR0 is mandatory for baseline compliance:
 
 | Idx | Name     | Description                                        | Profile  |
 |-----|----------|----------------------------------------------------|----------|
 | 0   | CORECFG  | Core configuration and flags (CFG + C/Z/N/V)       | required |
-| 1   | INTBASE  | Interrupt base page (IA alias)                     | full     |
-| 2   | INTSTAT  | Interrupt status / cause (in-ISR, pending, cause)  | full     |
-| 3   | INTCFG   | Fine-grain interrupt mask / nesting control        | full     |
-| 4   | MADCFG   | MAD profile configuration (enable, shift, satur.)  | full     |
-| 5   | MADSTAT  | MAD status (busy/overflow)                         | full     |
-| 6–7 | RSV-MAD  | Reserved for future arithmetic / vendor extensions | full     |
-| 8–15| RSV      | Reserved                                           | —        |
+| 1   | TIMER    | Cycle/instruction counter (16-bit free-running).   | full     |
+| 2   | TIMERCMP | Comparison value for the Timer.                    | full     |
+| 3   | INTCTRL  | Unified control: Status, Masks, and Watchdog.      | full     |
+| 4   | INTADDR  | Interrupt base page (IA alias)                     | full     |
+| 5   | MADCTRL  | MAD profile configuration (enable, shift, satur.)  | full     |
+| 6–15| RSV      | Reserved                                           | —        |
 
-#### CSR0 – CORECFG (mandatory)
+#### CSR0 – CORECFG (Core Configuration)
+Combines the architectural **CFG** register (Low Byte) with the read-only ALU flags (High Byte).
 
-`CSR0` combines the existing `CFG` register and the main ALU flags into a single 16-bit view:
-
-- Bits [7:0]  → `CFG` (same layout and semantics as described in the CFG table).
-- Bit  [8]    → `C` (carry flag).
-- Bit  [9]    → `Z` (zero flag).
-- Bit  [10]   → `N` (negative flag; sign of ACC under current W mode).
-- Bit  [11]   → `V` (overflow flag for signed ADD/SUB).
+- **Bits [7:0] – CFG (R/W)**: maps directly to the core configuration (Branch Width, Scale, Interrupt Enable, Immediate Mode, Sign Mode, Link Mode).
+- Bits [11:8] - ALU flags (RO):
+  - [8]  `C` → Carry flag
+  - [9]  `Z` → Zero flag
+  - [10] `N` → Negative flag (MSB of the result according to W)
+  - [11] `V` → Overflow flag (signed overflow for ADD/SUB)
 - Bits [15:12] → reserved (read as 0, writes ignored).
 
-Semantics:
+#### CSR1 – TIMER (Cycle Counter)
+A 16-bit free-running counter that increments once per **retired instruction** (recommended). Minimal implementations may instead increment once per clock cycle, but software must treat TIMER as an opaque monotonic counter.
+* **Read**: Returns current counter value.
+* **Write**: Loads a new value (e.g., to reset or create delayed events).
+* **Overflow**: Wraps from 0xFFFF to 0x0000 silently.
 
-- `CSRLD #0` reads back `CFG` and ALU flags into `ACC`.
-- `CSRST #0` writes `CFG` from `ACC[7:0]`. Flag bits [11:8] are typically read-only from software; writes are ignored or treated as debug-only in full-featured implementations.
+#### CSR2 – TIMERCMP (Timer Compare)
 
-This CSR allows debuggers, monitors and OS-like code to inspect and modify core configuration without relying on memory-mapped views.
+Holds the comparison value for the system timer.
 
-#### CSR1–CSR3 – Interrupt CSRs (full profile, optional)
+- On each increment of TIMER, if the value transitions from `TIMER != TIMERCMP` to `TIMER == TIMERCMP`, hardware sets the T_P (Timer Pending) bit in INTCTRL.
+- T_P remains set until cleared by software (write-1-to-clear).
+- Changing TIMERCMP does not automatically clear T_P.
 
-- **CSR1 – INTBASE**: exposes the interrupt page MSB (`IA`) to software.
+On a match event:
 
-  - Bits [7:0]  → `IA` (Interrupt Address page MSB).
-  - Bits [15:8] → reserved.
+1. If INTCTRL.WDOG = 1, the core performs a watchdog reset.
+2. Else, if INTCTRL.T_IE = 1 and CFG.IE = 1, a timer interrupt is raised
+   (T_P is set and the core vectors to the ISR).
 
-  `CSRLD #1` reads the current `IA`, and `CSRST #1` updates it using `ACC[7:0]`. This is an alias of the existing `IA` register and does not require an extra physical register.
+#### CSR3 – INTCTRL (Interrupt Control & Watchdog)
 
-- **CSR2 – INTSTAT** (optional): interrupt status and cause.
+Consolidates interrupt enables, pending status, and watchdog policy.
 
-  A typical layout is:
+Low Byte [7:0] – Configuration (R/W):
 
-  - Bit 0  → `IN_ISR`   (1 when executing inside an ISR).
-  - Bit 1  → `PENDING`  (1 if any interrupt is pending).
-  - Bits 4:2 → `CAUSE`  (encoded interrupt cause: external, SWI, timer, etc.).
-  - Bits 15:5 → reserved.
+- [0] SW_IE  – Software interrupt enable.
+- [1] EXT_IE – External interrupt enable.
+- [2] T_IE   – Timer interrupt enable.
+- [7] WDOG   – Watchdog mode. When set, a timer match (TIMER == TIMERCMP) causes
+               a core reset instead of raising a timer interrupt.
 
-  Compact implementations may return 0 and ignore writes.
+Bits [6:3] are reserved (read as 0, writes ignored).
 
-- **CSR3 – INTCFG** (optional): fine-grain interrupt configuration.
+High Byte [15:8] – Status (R / W1C):
 
-  Example layout:
+- [8]  IN_ISR – Core is currently executing inside an ISR.
+- [9]  EXT_P  – External interrupt pending.
+- [10] T_P    – Timer match pending (set when TIMER == TIMERCMP).
+- [11] SW_P   – Software interrupt pending (set by SWI).
+- [15:12] reserved.
 
-  - Bit 0 → `SWI_EN`   (software interrupt enable).
-  - Bit 1 → `EXT_EN`   (external interrupt enable).
-  - Bit 2 → `NEST_EN`  (allow nested interrupts).
-  - Bits 15:3 → reserved.
+Status bits EXT_P, T_P and SW_P are cleared by writing '1' to their positions (write-one-to-clear). IN_ISR is managed by hardware (RO for software).
 
-  This CSR complements the global `IE` bit in `CFG` without being required for
-  basic interrupt support.
+Effective enable per source:
 
-#### CSR4–CSR5 – MAD profile CSRs (full profile, optional)
+- SWI interrupt: taken when CFG.IE = 1 and SW_IE = 1 and SW_P = 1.
+- External interrupt: taken when CFG.IE = 1 and EXT_IE = 1 and EXT_P = 1.
+- Timer interrupt: taken when CFG.IE = 1, T_IE = 1, WDOG = 0 and T_P = 1.
 
-These CSRs are only meaningful when the MAD profile (Multiply-Add &
-Derivatives) is implemented.
+#### CSR4 – INTADDR (Interrupt Base Address)
 
-- **CSR4 – MADCFG**: MAD configuration.
+Alias of the architectural IA register.
 
-  - Bit 0   → `MAD_EN`   (enable MAD profile; when 0, MAD opcodes may behave
-                          as NOP or trap).
-  - Bits 2:1 → `MAD_SHIFT` (post-scaling shift applied to the 16-bit accumulator).
-  - Bit 3   → `MAD_SAT`  (0 = wrap, 1 = saturating mode).
-  - Bits 7:4 and 15:8 → reserved or vendor-specific.
+- Bits [7:0]  – IA (Interrupt Address page MSB).
+- Bits [15:8] – Reserved.
 
-- **CSR5 – MADSTAT** (optional): MAD status.
+CSRLD #4 reads IA; CSRST #4 writes IA using ACC[7:0]. No extra physical register is required.
 
-  - Bit 0 → `MAD_BUSY` (if MAD is multi-cycle; otherwise always 0).
-  - Bit 1 → `MAD_OVF`  (overflow indicator in the accumulator).
-  - Bits 15:2 → reserved.
+#### CSR5 – MADCTRL (Multiply-Add Control)
 
-Compact implementations of the MAD profile may hard-wire these fields to 0 or ignore writes, while full implementations can use them to expose richer control and diagnostic information.
+Unified control for the optional MAD (Multiply-Add & Derivatives) extension.
+
+Low Byte [7:0] – Control (R/W):
+
+- [0] EN    – Enable MAD unit (0 = disabled, 1 = enabled).
+- [1] SAT   – Saturation mode (0 = wrap, 1 = saturate).
+- [3:2] SHIFT – Post-multiply shift:
+  - 00 = no shift
+  - 01 = >>1
+  - 10 = >>2
+  - 11 = >>4
+
+Bits [7:4] reserved.
+
+High Byte [15:8] – Status (RO / W1C):
+
+- [8] OVF  – Accumulator overflow. Sticky; write 1 to clear.
+- [9] BUSY – MAD unit busy (multi-cycle implementations). Always 0 for single-cycle MAD.
+- [15:10] reserved.
+
+Compact implementations may tie MADCTRL to zero and ignore writes; full-profile implementations can expose richer behavior through these fields.
 
 ## Profiles:
 
