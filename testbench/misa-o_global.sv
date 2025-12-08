@@ -2,7 +2,7 @@
 
 `include "testbench/misa-o_instructions.svh"
 
-module tb_misao_global;
+module tb_misao;
 
     reg clk;
     reg rst;
@@ -108,8 +108,8 @@ module tb_misao_global;
     endtask
 
     initial begin
-        $dumpfile("tb_misao_global.vcd");
-        $dumpvars(0, tb_misao_global);
+        $dumpfile("waves_misao.vcd");
+        $dumpvars(0, tb_misao);
     end
 
 endmodule

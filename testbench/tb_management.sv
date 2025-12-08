@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 `include "testbench/misa-o_instructions.svh"
 
-module tb_management;
+module tb_misao;
 
     reg clk;
     reg rst;
@@ -76,7 +76,7 @@ module tb_management;
 
     initial begin
         $dumpfile("waves_management.vcd");
-        $dumpvars(0, tb_management);
+        $dumpvars(0, tb_misao);
 
         rst = 1;
         last_addr = 15'h7fff;

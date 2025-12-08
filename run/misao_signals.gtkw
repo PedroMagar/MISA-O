@@ -2,7 +2,7 @@
 [*] GTKWave Analyzer v3.3.100 (w)1999-2019 BSI
 [*] Thu Nov 27 15:18:40 2025
 [*]
-[dumpfile] "D:\Projetos\misa-o\run\waves_management.vcd"
+[dumpfile] "D:\Projetos\misa-o\run\waves_misao.vcd"
 [savefile] "D:\Projetos\misa-o\run\misao_debug.gtkw"
 [timestart] 180310
 [size] 1453 600

@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 `include "testbench/misa-o_instructions.svh"
 
-module tb_xmem;
+module tb_misao;
 
     reg clk;
     reg rst;
@@ -84,8 +84,8 @@ module tb_xmem;
     endtask
 
     initial begin
-        $dumpfile("waves_xmem.vcd");
-        $dumpvars(0, tb_xmem);
+        $dumpfile("waves_misao.vcd");
+        $dumpvars(0, tb_misao);
 
         rst = 1;
         last_addr = 15'h7fff;

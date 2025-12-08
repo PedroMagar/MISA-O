@@ -44,7 +44,7 @@ set "SIGNAL_FILE="
 echo.
 echo === Select GTKWave signal list (optional) ===
 set k=0
-for /f "delims=" %%F in ('dir /b /a-d "%RUN%\*.gtkw" "%RUN%\*.sav" "%RUN%\*signals*" 2^>nul ^| sort /unique') do (
+for /f "delims=" %%F in ('dir /b /s /a-d "%RUN%\*.gtkw" "%RUN%\*.sav" "%RUN%\*signals*" 2^>nul ^| sort /unique') do (
     set /a k+=1
     set "SIG_!k!=%%~fF"
     echo !k!: %%~fF
