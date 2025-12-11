@@ -189,13 +189,15 @@ The following layout is recommended, but only CSR0 is mandatory for baseline com
 
 | Idx | Name     | Description                                        | Profile  |
 |-----|----------|----------------------------------------------------|----------|
-| 0   | CORECFG  | Core configuration and flags (CFG + C/Z/N/V)       | required |
-| 1   | TIMER    | Cycle/instruction counter (16-bit free-running).   | full     |
-| 2   | TIMERCMP | Comparison value for the Timer.                    | full     |
-| 3   | INTCTRL  | Unified control: Status, Masks, and Watchdog.      | full     |
-| 4   | INTADDR  | Interrupt base page (IA alias)                     | full     |
-| 5   | MADCTRL  | MAD profile configuration (enable, shift, satur.)  | full     |
-| 6–15| RSV      | Reserved                                           | —        |
+| 0   | CZ       | Constant zero (read 0, writes ignored)             | required |
+| 1   | CORECFG  | Core configuration and flags (CFG + C/Z/N/V)       | required |
+| 2   | TIMER    | Cycle/instruction counter (16-bit free-running).   | TIME     |
+| 3   | TIMERCMP | Comparison value for the Timer.                    | full     |
+| 4   | INTCTRL  | Unified control: Status, Masks, and Watchdog.      | full     |
+| 5   | INTADDR  | Interrupt base page (IA alias)                     | full     |
+| 6   | MADCTRL  | MAD profile configuration (enable, shift, satur.)  | MAD      |
+| 7   | GPR      | General-Purpose Register                           | full     |
+| 8–15| RSV      | Reserved for extensions                            | —        |
 
 #### CSR0 – CORECFG (Core Configuration)
 Combines the architectural **CFG** register (Low Byte) with the read-only ALU flags (High Byte).
