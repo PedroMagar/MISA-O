@@ -51,19 +51,19 @@ The following table lists the architecture instructions:
 
 |Binary| Default  | Extended | Description                                        |
 |------|----------|----------|----------------------------------------------------|
-| 0001 |CC        |CFG       | Clear Carry / Swap Configuration                   |
+| 0001 |ADD       |SUB       | Add / Sub                                          |
+| 1001 |INC       |DEC       | Increment / Decrement                              |
 | 0101 |AND       |INV       | AND / Invert                                       |
-| 1001 |OR        |XOR       | OR / XOR                                           |
-| 1101 |SHL       |SHR       | Shift Left / Right                                 |
-| 0011 |ADD       |SUB       | Add / Sub                                          |
-| 1011 |INC       |DEC       | Increment / Decrement                              |
+| 1101 |OR        |XOR       | OR / XOR                                           |
+| 0011 |SHL       |SHR       | Shift Left / Right                                 |
+| 1011 |BTST      |TST       | Bit Test / Test                                    |
 | 0111 |BEQz      |BC        | Branch if Equal Zero / Branch if Carry             |
-| 1111 |BTST      |TST       | Bit Test / Test                                    |
-| 0010 |JAL       |JMP       | Jump and Link / Jump                               |
+| 1111 |JAL       |JMP       | Jump and Link / Jump                               |
+| 0010 |CC        |CFG       | Clear Carry / Swap Configuration                   |
 | 0110 |RACC      |RRS       | Rotate Accumulator/ Rotate Register Source 0       |
 | 1010 |RSS       |RSA       | Rotate Stack Source/Address                        |
 | 1110 |SS        |SA        | Swap Accumulator with Source/Address               |
-| 0100 |LDi       |**CMP**   | Load Immediate / Compare                           |
+| 0100 |LDi       |CMP       | Load Immediate / Compare                           |
 | 1100 |XMEM      |RETI\*    | Extended Memory Operations / Return from Interrupt |
 | 1000 |XOP       |SWI\*     | Extended Operations / Software Interrupt           |
 | 0000 |NOP       |**WFI\*** | No Operation / Wait-For-Interrupt                  |
@@ -454,6 +454,8 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
 **Branches**: Planned to be based on RA0, under some consideration it was changed to immediate value. Because of the small quantity of registers this seems more reasonable, but could be changed back to utilize RA0.
 
 **SS/SA & CFG**: SS and SA was initially designed for quick register swapping, this design was adjusted to allow partial swaps respecting **W** (useful for endianness control). To complement this, **CFG** now supports immediate loading, easing state management and reducing register pressure. **SA** remains a full 16-bit swap for address manipulation, as partial swaps provide little benefit in this context.
+
+**OPCODE Changes**: Although freezing the opcode map early would be desirable, during core design it became clear that some instructions could be organized in a more intuitive way. These changes are not intended to improve performance nor simplify decoding logic but to improve semantic grouping and readability of the ISA. By consistently separating common ALU-like operations (`xxx1`) from control, configuration, and architectural instructions (`xxx0`), the instruction set becomes easier to reason about, memorize, and hand-code in assembly. Given the small scope of the project, prioritizing clarity and interpretability over rigid opcode stability was considered a reasonable trade-off.
 
 **Multiply**: The area/power cost of a hardware multiplier is high for this class of core, and the **base opcode map is full**. Comparable minimal CPUs also omit MUL. Software emulation (shift-add) handles 4/8/16-bit cases well, so the practical impact is low. But there is a plan to create an extension (CFG reserved = 1) that will replace non-mandatory instructions by new ones, like **MAD**, DIV, Vector MAD or other arithmetic operations. The idea behind having MUL instruction is to keep open the possibility of an implementation that could run DOOM.
 
