@@ -32,7 +32,7 @@ Accumulators can be linked into wider configurations (2×8-bit or 1×16-bit), wh
     - 2b00: UL (Unlinked) - 4-bit mode (Default).
     - 2b01: LK8 (Link 8) - 8-bit mode.
     - 2b10: LK16 (Link 16) - 16-bit mode.
-    - 2b11: Reserved - Future use.
+    - 2b11: SPE - Special mode (reserved for custom profile).
 
 #### CFG Table:
 | Bit | Name     | Default | Description                                                                                |
@@ -49,24 +49,24 @@ Accumulators can be linked into wider configurations (2×8-bit or 1×16-bit), wh
 ## Instructions
 The following table lists the architecture instructions:
 
-|Binary| Default  | Extended | Description                                        |
-|------|----------|----------|----------------------------------------------------|
-| 0001 |ADD       |SUB       | Add / Sub                                          |
-| 1001 |INC       |DEC       | Increment / Decrement                              |
-| 0101 |AND       |INV       | AND / Invert                                       |
-| 1101 |OR        |XOR       | OR / XOR                                           |
-| 0011 |SHL       |SHR       | Shift Left / Right                                 |
-| 1011 |BTST      |TST       | Bit Test / Test                                    |
-| 0111 |BEQz      |BC        | Branch if Equal Zero / Branch if Carry             |
-| 1111 |JAL       |JMP       | Jump and Link / Jump                               |
-| 0010 |CC        |CFG       | Clear Carry / Swap Configuration                   |
-| 0110 |RACC      |RRS       | Rotate Accumulator/ Rotate Register Source 0       |
-| 1010 |RSS       |RSA       | Rotate Stack Source/Address                        |
-| 1110 |SS        |SA        | Swap Accumulator with Source/Address               |
-| 0100 |LDi       |CMP       | Load Immediate / Compare                           |
-| 1100 |XMEM      |RETI\*    | Extended Memory Operations / Return from Interrupt |
-| 1000 |XOP       |SWI\*     | Extended Operations / Software Interrupt           |
-| 0000 |NOP       |**WFI\*** | No Operation / Wait-For-Interrupt                  |
+|Binary| Default  | Extended | Description                                          |
+|------|----------|----------|------------------------------------------------------|
+| 0001 |ADD       |SUB       | Add / Sub                                            |
+| 1001 |INC       |DEC       | Increment / Decrement                                |
+| 0101 |AND       |INV       | AND / Invert                                         |
+| 1101 |OR        |XOR       | OR / XOR                                             |
+| 0011 |SHL       |SHR       | Shift Left / Right                                   |
+| 1011 |BTST      |TST       | Bit Test / Test                                      |
+| 0111 |BEQz      |BC        | Branch if Equal Zero / Branch if Carry               |
+| 1111 |JAL       |JMP       | Jump and Link / Jump                                 |
+| 0010 |CC        |CFG       | Clear Carry / Swap Configuration                     |
+| 0110 |RACC      |RRS       | Rotate Accumulator/ Rotate Register Source 0         |
+| 1010 |RSS       |RSA       | Rotate Stack Source/Address                          |
+| 1110 |SS        |SA        | Swap Accumulator with Source/Address                 |
+| 0100 |LDi       |CMP       | Load Immediate / Compare                             |
+| 1100 |XMEM      |**RSV**   | Extended Memory Operations / Reserved for extensions |
+| 1000 |XOP       |**RSV**   | Extended Operations / Reserved for extensions        |
+| 0000 |NOP       |**RSV**   | No Operation / Reserved for extensions               |
 
 Notes:
 - \* : Not mandatory instructions.
@@ -245,19 +245,23 @@ Two implementation profiles are envisaged:
 
 The following layout is recommended, but only CSR0 is mandatory for baseline compliance:
 
-| Idx | Name     | Description                                        | Profile  |
-|-----|----------|----------------------------------------------------|----------|
-| 0   | CZ       | Constant zero (read 0, writes ignored)             | required |
-| 1   | CORECFG  | Core configuration and flags (CFG + C/Z/N/V)       | required |
-| 2   | TIMER    | Cycle/instruction counter (16-bit free-running).   | TIME     |
-| 3   | TIMERCMP | Comparison value for the Timer.                    | full     |
-| 4   | INTCTRL  | Unified control: Status, Masks, and Watchdog.      | full     |
-| 5   | INTADDR  | Interrupt base page (IA alias)                     | full     |
-| 6   | MADCTRL  | MAD profile configuration (enable, shift, satur.)  | MAD      |
-| 7   | GPR      | General-Purpose Register                           | full     |
-| 8–15| RSV      | Reserved for extensions                            | —        |
+| Idx | Name     | Description                                        | Profile   |
+|-----|----------|----------------------------------------------------|-----------|
+| 0   | CZ       | Constant zero (read 0, writes ignored)             | required  |
+| 1   | CORECFG  | Core configuration and flags (CFG + C/Z/N/V)       | required  |
+| 2   | TIMER    | Cycle/instruction counter (16-bit free-running).   | time      |
+| 3   | TIMERCMP | Comparison value for the Timer.                    | full      |
+| 4   | INTCTRL  | Unified control: Status, Masks, and Watchdog.      | required  |
+| 5   | INTADDR  | Interrupt base page (IA alias)                     | interrupt |
+| 6   | GPR1     | General-Purpose Register                           | extended  |
+| 7   | GPR2     | General-Purpose Register                           | extended  |
+| 8–15| RSV      | Reserved for extensions                            | —         |
 
-#### CSR0 – CORECFG (Core Configuration)
+#### CSR0 – CZ (Constant zero)
+
+Defines CSR0 as always 0 (read 0, writes ignored).
+
+#### CSR1 – CORECFG (Core Configuration)
 Combines the architectural **CFG** register (Low Byte) with the read-only ALU flags (High Byte).
 
 - **Bits [7:0] – CFG (R/W)**: maps directly to the core configuration (Branch Width, Scale, Interrupt Enable, Immediate Mode, Sign Mode, Link Mode).
@@ -268,13 +272,13 @@ Combines the architectural **CFG** register (Low Byte) with the read-only ALU fl
   - [11] `V` → Overflow flag (signed overflow for ADD/SUB)
 - Bits [15:12] → reserved (read as 0, writes ignored).
 
-#### CSR1 – TIMER (Cycle Counter)
+#### CSR2 – TIMER (Cycle Counter)
 A 16-bit free-running counter that increments once per **retired instruction** (recommended). Minimal implementations may instead increment once per clock cycle, but software must treat TIMER as an opaque monotonic counter.
 * **Read**: Returns current counter value.
 * **Write**: Loads a new value (e.g., to reset or create delayed events).
 * **Overflow**: Wraps from 0xFFFF to 0x0000 silently.
 
-#### CSR2 – TIMERCMP (Timer Compare)
+#### CSR3 – TIMERCMP (Timer Compare)
 
 Holds the comparison value for the system timer.
 
@@ -288,7 +292,7 @@ On a match event:
 2. Else, if INTCTRL.T_IE = 1 and CFG.IE = 1, a timer interrupt is raised
    (T_P is set and the core vectors to the ISR).
 
-#### CSR3 – INTCTRL (Interrupt Control & Watchdog)
+#### CSR4 – INTCTRL (Interrupt Control & Watchdog)
 
 Consolidates interrupt enables, pending status, and watchdog policy.
 
@@ -323,7 +327,7 @@ Effective enable per source:
 - External interrupt: taken when CFG.IE = 1 and EXT_IE = 1 and EXT_P = 1.
 - Timer interrupt: taken when CFG.IE = 1, T_IE = 1, WDOG = 0 and T_P = 1.
 
-#### CSR4 – INTADDR (Interrupt Base Address)
+#### CSR5 – INTADDR (Interrupt Base Address)
 
 Alias of the architectural IA register.
 
@@ -332,35 +336,39 @@ Alias of the architectural IA register.
 
 CSRLD #4 reads IA; CSRST #4 writes IA using ACC[7:0]. No extra physical register is required.
 
-#### CSR5 – MADCTRL (Multiply-Add Control)
+#### CSR6-15 - RSV
 
-Unified control for the optional MAD (Multiply-Add & Derivatives) extension.
+Reserved CSRs for profiles, extension and design freedom.
 
-Low Byte [7:0] – Control (R/W):
+---
 
-- [0] EN    – Enable MAD unit (0 = disabled, 1 = enabled).
-- [1] SAT   – Saturation mode (0 = wrap, 1 = saturate).
-- [3:2] SHIFT – Post-multiply shift:
-  - 00 = no shift
-  - 01 = >>1
-  - 10 = >>2
-  - 11 = >>4
+# Profiles
 
-Bits [7:4] reserved.
+## Extended Profile:
 
-High Byte [15:8] – Status (RO / W1C):
+Defines CSR6 and CSR7 as GPR1 and GPR2 to extend register file.
 
-- [8] OVF  – Accumulator overflow. Sticky; write 1 to clear.
-- [9] BUSY – MAD unit busy (multi-cycle implementations). Always 0 for single-cycle MAD.
-- [15:10] reserved.
+### New CSRs:
 
-Compact implementations may tie MADCTRL to zero and ignore writes; full-profile implementations can expose richer behavior through these fields.
+| Idx | Name     | Description                                        | Profile   |
+|-----|----------|----------------------------------------------------|-----------|
+| 6   | GPR1     | General-Purpose Register                           | extended  |
+| 7   | GPR2     | General-Purpose Register                           | extended  |
 
-## Profiles:
+---
 
-### Interrupt Profile:
+## Interrupt Profile:
 
-#### Mapping:
+Not mandatory profile to implement interrupt.
+
+### Instructions:
+| Mode |Binary| Type      | Name     | Description                                |
+|------|------|-----------|----------|--------------------------------------------|
+| ALL  | 1100 |*Extended* |**RETI**  | Return from Interrupt                      |
+| ALL  | 1000 |*Extended* |**SWI**   | Software Interrupt                         |
+| ALL  | 0000 |*Extended* |**WFI**   | Wait-For-Interrupt                         |
+
+### Mapping:
 | Offset    | Description                | Width |
 | --------- | -------------------------- | ----- |
 | 0x00      | PC_next low/high           | 16b   |
@@ -368,8 +376,8 @@ Compact implementations may tie MADCTRL to zero and ignore writes; full-profile 
 | 0x03      | FLAGS snapshot             | 8b    |
 | 0x04–0x0F | Registers and ISR metadata | —     |
 
-#### Instructions:
-  - **Interrupts**: Not mandatory, *ia* holds the *Interrupt Service Routine* (ISR) page *Most Significant Byte* (MSB). On interrupt:
+### Description:
+  - **Interrupts**: *ia* holds the *Interrupt Service Routine* (ISR) page *Most Significant Byte* (MSB). On interrupt:
     - The CPU **stores PC_next, CFG/FLAGS, ACC, RS0/RS1, RA0/RA1** at fixed offsets in page `ia` (see layout below),
     - latches `IAR ← IA`, **clears IE**, clears any pending **XOP**, and
     - **jumps to** `IA<<8 + 0x10` (the ISR entry).
@@ -406,7 +414,9 @@ Compact implementations may tie MADCTRL to zero and ignore writes; full-profile 
       +0x10 : ISR entry (first instruction executed on entry)
 ```
 
-### Debug Profile (optional)
+---
+
+## Debug Profile
 
 MISA-O does not define a dedicated debug mode or external debug port. Instead, debugging is built on top of the existing **SWI** mechanism and the interrupt context save on the `IA` page.
 
@@ -438,11 +448,115 @@ The `SWI` instruction itself remains the preferred software breakpoint primitive
 
 Combining SWI breakpoints with `DBGSTEP` provides a minimal yet powerful debug facility without additional opcodes or privilege levels.
 
-### MAD Profile:
+---
 
-TO-DO
+## MAD Profile (Multiply-Add & Derivatives)
 
-### Development (Candidate Instructions)
+The **MAD Profile** is an **optional execution profile** that extends MISA-O with lightweight multiply-accumulate and comparison helpers, targeting fixed-point workloads such as graphics, audio, and DSP-style inner loops.
+
+The profile is **only active when LINK mode = `2’b11` (SPE)**.
+In all other link modes, MAD profile opcodes are treated as **NOP**.
+
+To be **MAD Profile compliant**, an implementation must support:
+
+* the **SPE link mode**,
+* the **MAD opcode remapping** defined in this section, and
+* the architectural semantics described below.
+
+No additional architectural registers are introduced.
+All control is encoded **per-instruction** via the immediate nibble, while observable status is limited to existing architectural mechanisms (notably the **Carry flag**).
+
+---
+
+### Non-MAD instructions in SPE mode
+
+All opcodes **not explicitly defined** by the MAD Profile **retain their LK16 architectural semantics** when executed in SPE mode.
+
+In particular:
+
+* CSR access instructions (`CSRLD` / `CSRST`) remain available and behave identically to LK16.
+* Memory, control-flow, and non-MAD arithmetic instructions are unaffected.
+* SPE imposes **no additional restrictions** beyond MAD opcode remapping.
+
+---
+
+### Operand model
+
+* Multiply operands are taken from **RS0** and **RS1**.
+* The accumulator and destination is **ACC**.
+* When operating in SPE mode, each source register provides **two independent 8-bit lanes**:
+
+  * **Lane 0**: bits `[7:0]`
+  * **Lane 1**: bits `[15:8]`
+* Accumulation is always performed in **16-bit precision**.
+* Signedness follows the global **`SIGN`** flag in `CFG`.
+
+---
+
+### Instructions
+
+| Mode |Binary| Type       | Name     | Description                               |
+|------|------|------------|----------|-------------------------------------------|
+| SPE  | 1100 | *Extended* | **MAD**  | Multiply-Add                              |
+| SPE  | 1000 | *Extended* | **MAX**  | Maximum                                   |
+| SPE  | 0000 | *Extended* | **MIN**  | Minimum                                   |
+
+---
+
+### Instruction semantics
+
+- **MAD #imm**: `ACC ← SAT( ( ACC + (OP1 × OP2) ) >> SHIFT )`; where:
+  - `OP1` = selected 8-bit lane of `RS0`
+  - `OP2` = selected 8-bit lane of `RS1`
+  - Signed or unsigned multiplication follows `SIGN`
+  - Accumulation is 16-bit
+  - Post-operation shift and saturation are controlled by `#imm`
+  - The Carry flag (`C`) reflects the carry-out of the 16-bit accumulation prior to shift and saturation.
+  - Saturation or internal overflow conditions may update **implementation-defined** status bits exposed via `CORECFG`
+  - Saturation is based on SIGN flag from CFG. If:
+    - `SAT=1 & SIGN=Unsigned`: clamp result to [0, 0xFFFF]
+    - `SAT=1 & SIGN=Signed`: clamp result to [-32768, +32767]
+- **MAX**: `ACC ← max( ACC , RS0 )`; operates on the full 16-bit value. Flags unchanged.
+- **MIN**: `ACC ← min( ACC , RS0 )`; operates on the full 16-bit value. Flags unchanged.
+- **Others**
+  All non-MAD opcodes executed in SPE mode **retain LK16 architectural behavior**, including CSR access.
+
+---
+
+### Immediate format (MAD-exclusive)
+
+The immediate nibble controls MAD operation:
+
+- imm[3:2] — **SHIFT** - Post-operation right shift:
+  - `00` = no shift
+  - `01` = >> 1
+  - `10` = >> 2
+  - `11` = >> 4
+- imm[1] — **SAT** - Saturation enable:
+  - `0` = wrap
+  - `1` = saturate
+- imm[0] — **LANE** - Operand lane select:
+  - `0` = low 8-bit lane
+  - `1` = high 8-bit lane
+
+Right shifts are **arithmetic** when `SIGN=1` and **logical** when `SIGN=0`.
+
+---
+
+### Notes and design rationale
+
+* The MAD Profile **does not require a dedicated control CSR**.
+* The profile relies exclusively on existing architectural registers (`ACC`, `RS0`, `RS1`).
+* Per-instruction immediates enable aggressive inner-loop optimization without global state changes.
+* `SIGN` semantics are consistent with the base ISA.
+* The `IMM` flag is ignored by `MAD`, as the immediate nibble is always consumed as control.
+* Multi-cycle MAD implementations may expose a `BUSY` indication via implementation-defined bits in `CORECFG`; single-cycle implementations may hard-wire it to zero.
+* Implementations may internally fuse MAD or decompose it into multiply and add steps, provided architectural results are preserved.
+* Unlike MAD, MAX/MIN operate on the full 16-bit scalar value and are intended as clamp helpers rather than lane-wise SIMD operations.
+
+---
+
+# Development
 
 The table below lists **candidate instructions** that are *not part of the baseline ISA* but are being evaluated for future inclusion.
 These entries **do not represent actual opcode encodings**; the binary field is merely a placeholder layout used to ease migration when promoting candidates into official instructions.
@@ -519,4 +633,12 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
 
 **CSR Bank (Control & Extensions)**: To support richer control, debugging and future extensions, MISA-O also reserves space for a small CSR bank (up to 16 × 16-bit registers, 32 bytes total), exposed via optional `CSRLD`/`CSRST` instructions that reuse the RACC/RRS opcodes in LK16 and use the instruction’s immediate nibble as CSR index (0–15). This CSR bank can host core control bits, extended interrupt state or configuration for the MAD profile and other vendor-specific features, without bloating the baseline register file. As with the arithmetic extensions, CSR access is initially treated as a custom/optional feature to be prototyped and validated before being committed to the core specification.
 
-**MAD Profile**: A complementary *MAD Profile (Multiply-Add & Derivatives)* is under evaluation to extend the arithmetic capabilities of MISA-O without impacting the baseline datapath. This profile introduces a compact MAD unit (8-bit×8-bit → 16-bit accumulate) along with lightweight arithmetic helpers such as MIN/MAX, enabling more efficient inner loops for graphics, audio and fixed-point workloads. The profile may also integrate access to a small bank of CSRs to expose configuration, control or per-function state with lower software overhead. Both the MAD unit and the CSR mechanism remain optional and experimental: they are implemented as custom extensions first, allowing area/latency evaluation before deciding whether promotion into an official profile is justified.
+**MAD Profile**: The *MAD Profile (Multiply-Add & Derivatives)* is an optional execution profile that extends the arithmetic capabilities of MISA-O without impacting the baseline datapath or register model.
+
+The profile introduces a compact multiply-accumulate unit (8-bit × 8-bit → 16-bit accumulate), along with lightweight arithmetic helpers such as MIN and MAX, specifically targeting fixed-point inner loops common in graphics, audio and DSP-style workloads.
+
+MAD operates exclusively in the SPE link mode and relies solely on existing architectural registers (ACC, RS0, RS1), with all control encoded per-instruction via the immediate nibble. The MAD instructions themselves do not require any additional architectural state or control registers.
+
+For implementation compliance, the MAD Profile **requires support for the Extended Profile**, including the availability of additional general-purpose registers exposed via the CSR bank. While not strictly required by MAD semantics, these registers provide substantial practical benefits for scheduling, data reuse and register pressure reduction, at a negligible additional hardware cost relative to the multiply-accumulate datapath.
+
+As an optional profile, MAD allows implementers to trade silicon area and latency for higher arithmetic throughput. Implementations may range from simple multi-cycle designs to fully pipelined units, provided architectural semantics are preserved. The profile is considered architecturally stable and may be adopted independently of other optional execution profiles.
