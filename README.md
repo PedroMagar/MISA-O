@@ -346,9 +346,13 @@ Reserved CSRs for profiles, extension and design freedom.
 
 ## Extended Profile:
 
-Defines CSR6 and CSR7 as GPR1 and GPR2 to extend register file.
+The **Extended Profile** expands the baseline MISA-O core with two additional 16-bit general-purpose registers (**GPR1** and **GPR2**), mapped to CSR indices 6 and 7.
 
-### New CSRs:
+This profile does not introduce new instructions or execution modes. Its purpose is to reduce register pressure and improve code quality for non-trivial workloads at a negligible hardware cost.
+
+The Extended Profile is optional for baseline MISA-O compliance, but **required for MAD Profile compliance** implementations.
+
+### CSR Extensions:
 
 | Idx | Name     | Description                                        | Profile   |
 |-----|----------|----------------------------------------------------|-----------|
