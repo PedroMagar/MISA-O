@@ -83,6 +83,64 @@ Since ACC/RS0 rotation would became useless at LK16 mode, in LK16 mode this inst
 | LK16 | 0110 |*Default*  |**CSRLD** | *Load CSR*: loads CSR indexed by **#imm (0–15)** into **ACC**   |
 | LK16 | 0110 |*Extended* |**CSRST** | *Store CSR*: writes **ACC** into CSR indexed by **#imm (0–15)** |
 
+### Instruction Class Overview
+
+The MISA-O instruction set is organized primarily by **semantic instruction classes**, rather than by encoding size, execution latency, or microarchitectural constraints. This organization aims to make the ISA easier to read, memorize, and hand-code, while keeping decoding logic simple and implementation-agnostic.
+
+Although the opcode encoding does not enforce strict structural rules (such as immediate presence or instruction length), the opcode space is intentionally arranged to reflect the conceptual role of each instruction.
+
+#### Arithmetic Operations
+
+Arithmetic instructions form the foundation of the ALU and are presented first. These operations modify numeric values and typically affect arithmetic flags.
+
+* **ADD / SUB** – Addition and subtraction
+* **INC / DEC** – Increment and decrement
+
+These instructions represent the most common numeric operations and are therefore prioritized in the opcode map.
+
+#### Logical Operations
+
+Logical instructions perform boolean operations on registers or operands, operating at the bitwise level without implying numeric magnitude.
+
+* **AND / INV** – Bitwise AND and inversion
+* **OR / XOR** – Bitwise OR and exclusive OR
+
+Logical operations are grouped separately from arithmetic operations, following common industry conventions.
+
+#### Bit Manipulation Operations
+
+Bit manipulation instructions operate on individual bits or bit positions. These instructions are frequently used to prepare conditions for control flow.
+
+* **SHL / SHR** – Logical shift left and right
+* **BTST / TST** – Bit test and general test
+
+Shifts and tests are grouped together as low-level bit-oriented operations, often used in conjunction with conditional branches.
+
+#### Control Flow Operations
+
+Control flow instructions alter the program counter and define execution paths.
+
+* **BEQz / BC** – Conditional branches
+* **JAL / JMP** – Unconditional jumps and call-like control transfers
+
+All instructions that may modify the program counter are grouped under the `x111` opcode pattern, making control-flow instructions easy to identify.
+
+#### Architectural and Structural Operations
+
+Instructions in this class affect architectural state, configuration, or execution structure rather than performing direct data processing.
+
+* **CC / CFG** – Flag control and configuration manipulation
+* **RACC / RRS**, **RSS / RSA**, **SS / SA** – Register, stack, and accumulator manipulation
+* **LDi / CMP** – Immediate load and comparison
+* **XMEM / RETI**, **XOP / SWI**, **NOP / WFI**
+
+This class intentionally groups instructions that are more architectural or structural in nature.
+Notably, **CMP** is placed alongside **LDi** due to encoding constraints, even though it semantically belongs to the comparison/test family. This placement is a pragmatic compromise and does not imply semantic equivalence between immediate loading and comparison.
+
+#### Design Philosophy Note
+
+The instruction class organization is intended to aid **human understanding and manual assembly**, not to impose microarchitectural constraints. Implementations are free to decode and execute instructions independently of their class grouping, and no assumptions about instruction length, latency, or internal pipeline behavior are implied by this classification.
+
 ## Main Instructions:
 - **Not Mandatory / Custom Instructions**: Opcodes marked “not mandatory” may be used for custom extensions by implementers. Code that uses them is not compatible with baseline MISA-O cores.
 - **INV**: `ACC ← ~ACC` within the active width W (4/8/16); *flags unchanged*.
