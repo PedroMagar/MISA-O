@@ -189,24 +189,24 @@ Program with 100 instructions:
 ## Instruction Semantics:
 
 - **Not Mandatory / Custom Instructions**: Opcodes marked “not mandatory” may be used for custom extensions by implementers. Code that uses them is not compatible with baseline MISA-O cores.
-- **INV**: `ACC ← ~ACC` within the active width W (4/8/16); *flags unchanged*.
+- **INV**: `ACC ← ~ACC` within the active width W (4/8/16); Updates `Z` and `N` from the result. Does not update `C` or `V`.
 - **ADD/ADDI**: `ACC ← ACC + OP2` within the active width W (4/8/16); updates `C` with carry-out; respect carry-in.
   - If `IMM = 0`: `OP2 = RS0`.
   - If `IMM = 1`: `OP2 = imm_W` (the immediate value zero-extended to W bits).
 - **SUB/SUBI**: `ACC ← ACC - OP2` within the active width W (4/8/16); updates `C` with borrow; respect carry-in.
   - If `IMM = 0`: `OP2 = RS0`.
   - If `IMM = 1`: `OP2 = imm_W`.
-- **AND/ANDI**: `ACC ← ACC & OP2` within the active width W (4/8/16); *flags unchanged*.
+- **AND/ANDI**: `ACC ← ACC & OP2` within the active width W (4/8/16); Updates `Z` and `N` from the result. Does not update `C` or `V`.
   - If `IMM = 0`: `OP2 = RS0`.
   - If `IMM = 1`: `OP2 = imm_W`.
-- **OR/ORI**: `ACC ← ACC | OP2` within the active width W (4/8/16); *flags unchanged*.
+- **OR/ORI**: `ACC ← ACC | OP2` within the active width W (4/8/16); Updates `Z` and `N` from the result. Does not update `C` or `V`.
   - If `IMM = 0`: `OP2 = RS0`.
   - If `IMM = 1`: `OP2 = imm_W`.
-- **XOR/XORI**: `ACC ← ACC ^ OP2` within the active width W (4/8/16); *flags unchanged*.
+- **XOR/XORI**: `ACC ← ACC ^ OP2` within the active width W (4/8/16); Updates `Z` and `N` from the result. Does not update `C` or `V`.
   - If `IMM = 0`: `OP2 = RS0`.
   - If `IMM = 1`: `OP2 = imm_W`.
 - **INC/DEC**: Increment/Decrement ACC by 1; updates `C` with carry-out/borrow; carry-in is always treated as 0.
-- **SHL/SHR**: Shift ACC Left/Right by 1 bit; the outgoing bit goes to Carry, and the vacated side is filled with 0.
+- **SHL/SHR**: Shift ACC Left/Right by 1 bit; the outgoing bit goes to Carry, and the vacated side is filled with 0. Updates `C` with the shifted-out bit and updates `Z`/`N` from the result. Does not update `V`.
 - **RACC/RRS**: Rotate Accumulator / Register Source - It rotates ACC/RS0 by W bits (4/8), wrapping around; in LK16, the RACC/RRS opcode encoding is repurposed as Special Instructions (SI).
 - **RSS/RSA**: Treat RS/RA as a stack and rotate it. Any implementation that extends these instructions to additional registers constitutes a non-standard extension and may break binary compatibility.
 - **SS**:  Swaps the contents of **ACC** *with* source operand register 0 (**RS0**), respecting the active **W** (word-size) configuration: `ACC ↔ RS0 (W-bits)`.
@@ -215,18 +215,22 @@ Program with 100 instructions:
   - **JAL**: `RA1 ← PC_next`; `PC ← RA0`
   - **JMP**: `PC ← RA0`
 - **CFG #imm**: Loads the *immediate* (**#imm**) value into the **CFG** register. The **CFG** register can also be accessed at `CSR1` for reading. *(Useful for changing link width (W) or enabling features without register overhead.)*
-- **CMP**: Compares **ACC** with **RS0** by subtraction (respecting **W**), updates carry/borrow and an internal ZERO flag. If the next instruction is **BEQz**, it uses this ZERO flag instead of reading ACC directly. `ZERO` flag will clear itself if the next instruction is not BEQz.
-- **Branches** (PC-relative): If (cond): **PC ← PC_next + ( *sign_extend*(BW ? imm8 : imm4) << (BRS ? 2 : 0) )**; Else: **PC ← PC_next**; *flags unchanged*. **ATTENTION**: **BEQz** has a special behaviour if it's executed after a **CMP** instruction.
-  - **BEQz #imm**: If preceded by CMP: branch if `ZERO=1`. Else: branch if `ACC==0`. Always clears ZERO.
-  - **BC   #imm**: Branch if `Carry C == 1`.
+- **CMP**: Computes a subtraction of the form `tmp = ACC − OP2 − (CI ? C_in : 0)` using width `W`, **without modifying `ACC`**. The instruction updates flags as if a `SUB` had been executed:
+  - `C = borrow-out`
+  - `Z = (tmp == 0)`
+  - `N = MSB(tmp)`
+  - `V = signed overflow on subtraction`
+- **Branches** (PC-relative): If (cond): **PC ← PC_next + ( *sign_extend*(BW ? imm8 : imm4) << (BRS ? 2 : 0) )**; Else: **PC ← PC_next**; *flags unchanged*.
+  - **BEQz #imm**: Branch if `Z == 1`.
+  - **BC   #imm**: Branch if `C == 1`.
   - **BTST/BTSTI**:
     - If `IMM = 0`: `idx = RS0[3:0]`.
     - If `IMM = 1`: `idx = imm4` (low 4 bits of the immediate).
-    - Then: tests bit `ACC[idx]`; sets `C = ACC[idx]`; `ACC` not written.
+    - Then: tests bit `ACC[idx]`; sets `C = ACC[idx]`; `ACC` not written. Updates Z to reflect whether the tested bit is zero.
   - **TST/TSTI**:
     - If `IMM = 0`: `mask = RS0`.
     - If `IMM = 1`: `mask = imm_W` (immediate zero-extended to W bits).
-    - Then: `tmp = ACC & mask`; sets `C = 1` if `tmp != 0`, else `C = 0`; `ACC` not written (limited by current link width).
+    - Then: `tmp = ACC & mask`; sets `C = 1` if `tmp != 0`, else `C = 0`; `ACC` not written (limited by current link width); updates `Z`/`N` from `tmp`, does not update `V`.
 - **XOP**: Executes next instruction as Extended Operation.
 - **XMEM #f**: Extended Memory Operations (opcode 1100 + 4-bit function):
   - Function:
@@ -247,8 +251,8 @@ Program with 100 instructions:
       - **UL**: `tmp ← [addr]; tmp[3:0] ← ACC[3:0]; [addr] ← tmp`
     - If `AM=1`: `addr ← addr + (DIR ? −stride : +stride)`
     - Flags: **unchanged**.
-  - **CSRLD #imm**: Loads CSR into ACC (more details on CSR section).
-  - **CSRST #imm**: Write ACC into CSR (more details on CSR section).
+- **CSRLD #imm**: Loads CSR into ACC (more details on CSR section).
+- **CSRST #imm**: Write ACC into CSR (more details on CSR section).
 
 ### **Carry Flag (C)**
 
@@ -290,13 +294,33 @@ SHL             ; ACC ← ACC << 1, C ← 1
 
 These idioms are considered canonical and may be optimized by implementations. They provide a portable and explicit mechanism to control carry state without introducing additional opcodes.
 
+### Flag update rules
+
+The flags `C`, `Z`, `N`, and `V` are **architectural state**. Unless stated otherwise, instructions that produce an ALU result update a subset of these flags as described below.
+
+**Definitions (width = W):**
+
+* `Z = 1` iff the computed result equals zero.
+* `N = MSB(result)` (bit `W-1`).
+* `C` is operation-defined (carry-out for shifts/add; borrow-out for sub/dec).
+* `V` indicates signed overflow for add/sub-style operations.
+
+**Which instructions update flags:**
+
+* **ADD / INC** update: `C`, `Z`, `N`, `V`.
+* **SUB / DEC / CMP** update: `C`, `Z`, `N`, `V` where `C = borrow-out`.
+* **SHL / SHR** update: `C`, `Z`, `N` (and do not update `V`).
+* **AND / OR / XOR / INV / TST** update: `Z`, `N` (and do not update `C` or `V`).
+
+**Branch and control-flow instructions never modify flags.**
+
 ### Multi-precision arithmetic (CI=1)
 
 When the **CI (Carry-In)** flag is enabled, arithmetic instructions may be chained to implement **multi-precision arithmetic** across multiple words.
 
 For **addition**, the carry-out (`C`) produced by an `ADD` instruction becomes the carry-in for the next higher word. Software must ensure that the carry flag is **cleared** before processing the least significant word. Subsequent words are processed sequentially, propagating carry automatically.
 
-For **subtraction**, the carry flag represents the inverted borrow condition. When `CI = 1`, a `SUB` instruction interprets `C = 1` as *no borrow-in* and `C = 0` as *borrow-in*. The result of each subtraction updates `C` accordingly, allowing borrow to propagate across words in a manner analogous to addition.
+For **subtraction**, the carry flag represents borrow. When `CI = 1`, a `SUB` instruction subtracts an additional 1 if `C = 1`, allowing borrow to propagate naturally across words. Software must clear C before the least significant word subtraction.
 
 Multi-precision operations are typically implemented by iterating over words from least significant to most significant, using `XMEM` loads/stores and standard arithmetic instructions, without requiring dedicated wide arithmetic opcodes.
 
@@ -304,7 +328,7 @@ Multi-precision operations are typically implemented by iterating over words fro
 
 - BW/BRS are global (from CFG). Keep them constant within a function.
 - With imm4 and large scaling (e.g., <<2), targets should be aligned accordingly to avoid padding.
-- Taking a branch does not modify flags and clears any pending XOP.
+- Taking a branch does not modify flags.
 
 ---
 
@@ -413,6 +437,8 @@ Combines the architectural **CFG** register (Low Byte) with the read-only ALU fl
   - [11] `V` → Overflow flag (signed overflow for ADD/SUB)
 - Bits [15:12] → reserved (read as 0, writes ignored).
 
+Flags are latched architectural state and reflect the most recent flag-setting instruction.
+
 ---
 
 #### CSR2-4 – GPR (General-Purpose Registers)
@@ -423,9 +449,9 @@ These registers are intended to assist calling conventions, reduce memory traffi
 
 | Idx | Name     | Description                                        | Profile   |
 |-----|----------|----------------------------------------------------|-----------|
-| 2   | GPR1     | General-Purpose Register                           | required  |
-| 3   | GPR2     | General-Purpose Register                           | required  |
-| 4   | GPR3     | General-Purpose Register                           | required  |
+| 2   | GPR1     | General-Purpose Register                           | baseline  |
+| 3   | GPR2     | General-Purpose Register                           | baseline  |
+| 4   | GPR3     | General-Purpose Register                           | baseline  |
 
 **Typical Usage:**
 - GPR1: Stack Pointer (SP) or callee-saved
@@ -536,7 +562,7 @@ When an interrupt is taken, the core automatically performs the following action
 * Saves `PC_next`
 * Saves `CFG`
 * Saves `FLAGS`
-* Saves `RA0` (link / return address)
+* Saves `RA1` (link / return address)
 * Saves `IA` and `IAR`
 * Clears `CFG.IE`
 * Clears any pending `XOP`
@@ -563,7 +589,7 @@ The `RETI` instruction restores the same minimal state saved on interrupt entry:
 * `PC`
 * `CFG`
 * `FLAGS`
-* `RA0`
+* `RA1`
 * `IA` and `IAR`
 
 Registers not restored by `RETI` are assumed to have been handled by the ISR.
@@ -597,12 +623,12 @@ The interrupt frame is intentionally minimal; software is expected to save only 
 | 0x03      | FLAGS snapshot             | 8b    |
 | 0x04      | IA                         | 8b    |
 | 0x05      | IAR                        | 8b    |
-| 0x06–0x07 | RA0                        | 16b   |
+| 0x06–0x07 | RA1                        | 16b   |
 | 0x08–0x0F | Reserved for future use    | —     |
 
 ### Description:
   - **Interrupts**: *ia* holds the *Interrupt Service Routine* (ISR) page *Most Significant Byte* (MSB). On interrupt:
-    - The CPU **stores only the minimal architectural state required for resumption: PC_next, CFG, FLAGS, RA0, IA and IAR** at fixed offsets in page `ia` (see layout below), all other registers are software-managed and must be explicitly saved by the ISR if needed,
+    - The CPU **stores only the minimal architectural state required for resumption: PC_next, CFG, FLAGS, RA1, IA and IAR** at fixed offsets in page `ia` (see layout below), all other registers are software-managed and must be explicitly saved by the ISR if needed,
     - latches `IAR ← IA`, **clears IE**, clears any pending **XOP**, and
     - **jumps to** `IA<<8 + 0x10` (the ISR entry).
     - Interrupt address register (`IA`) is mapped at `CSR 8`.
@@ -616,8 +642,8 @@ The interrupt frame is intentionally minimal; software is expected to save only 
       - **FLAGS** ← [base+0x03]           ;
       - **IA**  ← [base+0x04]             ; interrupt page MSB
       - **IAR** ← [base+0x05]             ; previous latched page (for nested unwinding)
-      - **RA0** ← [base+0x06..0x07]       ; address register
-    - **Not restored by RETI**: **ACC**, **RS0**, **RS1**, **RA1** or any GPR — the ISR must restore them in software before RETI.
+      - **RA1** ← [base+0x06..0x07]       ; address register
+    - **Not restored by RETI**: **ACC**, **RS0**, **RS1**, **RA0** or any GPR — the ISR must restore them in software before RETI.
     - After RETI, **IE** follows the IE bit of the active **CFG** (restored or left as set by the ISR).
   - Fixed layout within the ia page:
 ```
@@ -630,8 +656,8 @@ The interrupt frame is intentionally minimal; software is expected to save only 
       +0x03 : FLAGS snapshot (8-bit)
       +0x04 : IA        (8-bit)
       +0x05 : IAR       (8-bit)
-      +0x06 : RA0[7:0]  (8-bit)
-      +0x07 : RA0[15:8] (8-bit)
+      +0x06 : RA1[7:0]  (8-bit)
+      +0x07 : RA1[15:8] (8-bit)
       +0x08-0x0F : RSV  (reserved)
       +0x10 : ISR entry (first instruction executed on entry)
 ```
@@ -738,8 +764,8 @@ In particular:
   - Saturation is based on SIGN flag from CFG. If:
     - `SAT=1 & SIGN=Unsigned`: clamp result to [0, 0xFFFF]
     - `SAT=1 & SIGN=Signed`: clamp result to [-32768, +32767]
-- **MAX**: `ACC ← max( ACC , RS0 )`; operates on the full 16-bit value. Flags unchanged.
-- **MIN**: `ACC ← min( ACC , RS0 )`; operates on the full 16-bit value. Flags unchanged.
+- **MAX**: `ACC ← max( ACC , RS0 )`; operates on the full 16-bit value.
+- **MIN**: `ACC ← min( ACC , RS0 )`; operates on the full 16-bit value.
 - **Others**
   All non-MAD opcodes executed in SPE mode **retain LK16 architectural behavior**, including CSR access.
 
