@@ -45,7 +45,7 @@ Accumulators can be linked into wider configurations (2×8-bit or 1×16-bit), wh
 |  4  | IE       |    0    | Interrupt enable                                                                                      |
 |  3  | IMM      |    0    | When set, selected ALU opcodes use an embedded immediate instead of RS0 as second operand.            |
 |  2  | SIGN     |    0    | Signed arithmetic mode                                                                                |
-| 1:0 | W (LINK) |   00    | Accumulator link width: UL(4), LK8, LK16, SPE                                                         |
+| 1:0 | W (LINK) |   00    | Accumulator link width: 00=UL(4-bit), 01=LK8, 10=LK16, 11=SPE                                         |
 
 ## Instructions
 The following table lists the architecture instructions:
@@ -141,7 +141,53 @@ Notably, **CMP** is placed alongside **LDi** due to encoding constraints, even t
 
 The instruction class organization is intended to aid **human understanding and manual assembly**, not to impose microarchitectural constraints. Implementations are free to decode and execute instructions independently of their class grouping, and no assumptions about instruction length, latency, or internal pipeline behavior are implied by this classification.
 
-## Main Instructions:
+### Instruction Encoding Reference
+
+MISA-O uses **nibble-based encoding** with variable-length instructions:
+
+|      Type      |          Format         | Size |                 Example                  |
+|----------------|-------------------------|------|------------------------------------------|
+| Simple         | 4-bit opcode            | 0.5B¹| `ADD`, `INC`, `JAL`                      |
+| Extended       | XOP + opcode            | 1B   | `XOP; SUB`                               |
+| Immediate      | (XOP)opcode + W-bit imm | 1-3B | `ADD #value` (W-dependent) (IMM=enabled) |
+| Load immediate | 4-bit + W-bit imm       | 1-3B | `LDi #value` (W-dependent)               |
+| CFG Update     | 4-bit + 8-bit imm       | 1B   | `CFG #imm` (paired)                      |
+| CSR access     | 4-bit + 4-bit index     | 1B   | `CSRLD #5`                               |
+| Memory         | 4-bit + 4-bit func      | 1B   | `XMEM #0b1010`                         |
+| Branch         | 4-bit + imm4/8          | 1-2B | `BEQz #target` (BW-dependent)            |
+
+¹ *Two 4-bit instructions pack into a single byte*
+
+**Key Points:**
+- Instructions are **nibble-aligned** (not byte-aligned)
+- Simple operations (ADD, SS, etc) can pair in 1 byte
+- Complex operations (CFG, LDi) use 2-3 bytes
+- When `CFG.IMM` is enable, relevant instructions (ADD, SUB, AND, OR, XOR, TST) will increase by W-size to accomodate such immediate (BTST will always increase by 4-bit because it's enough to accomodate the 16 positions of the register).
+- Average instruction size: **~1.5 bytes**
+
+**Encoding Density:**
+```
+Program with 100 instructions:
+  40 simple (4-bit) = 20 bytes
+  30 with imm (8-bit) = 30 bytes
+  20 CSR/XMEM (8-bit) = 20 bytes
+  10 LDi/Branch (16-24 bit) = 25 bytes
+  ─────────────────────────
+  Total: ~95 bytes (0.95 bytes/instruction average)
+```
+
+**Comparison with other ISAs:**
+|    ISA     | Average Instruction Size |
+|------------|--------------------------|
+| x86        | 3-4 bytes                |
+| ARM Thumb  | 2 bytes                  |
+| RISC-V RVC | 2 bytes                  |
+| **MISA-O** | **1.5 bytes**            |
+
+---
+
+## Instruction Semantics:
+
 - **Not Mandatory / Custom Instructions**: Opcodes marked “not mandatory” may be used for custom extensions by implementers. Code that uses them is not compatible with baseline MISA-O cores.
 - **INV**: `ACC ← ~ACC` within the active width W (4/8/16); *flags unchanged*.
 - **ADD/ADDI**: `ACC ← ACC + OP2` within the active width W (4/8/16); updates `C` with carry-out; respect carry-in.
@@ -161,14 +207,14 @@ The instruction class organization is intended to aid **human understanding and 
   - If `IMM = 1`: `OP2 = imm_W`.
 - **INC/DEC**: Increment/Decrement ACC by 1; updates `C` with carry-out/borrow; carry-in is always treated as 0.
 - **SHL/SHR**: Shift ACC Left/Right by 1 bit; the outgoing bit goes to Carry, and the vacated side is filled with 0.
-- **RACC/RRS**: Rotate Accumulator / Register Source - It rotates ACC/RS0 by W bits (4/8), wrapping around; in LK16 it has no effect (NOP).
-- **RSS/RSA**: It will treat RS/RA as a stack and rotate it *(currently looks like a swap, but later on if more registers were added it will truly rotate)*.
+- **RACC/RRS**: Rotate Accumulator / Register Source - It rotates ACC/RS0 by W bits (4/8), wrapping around; in LK16, the RACC/RRS opcode encoding is repurposed as Special Instructions (SI).
+- **RSS/RSA**: Treat RS/RA as a stack and rotate it. Any implementation that extends these instructions to additional registers constitutes a non-standard extension and may break binary compatibility.
 - **SS**:  Swaps the contents of **ACC** *with* source operand register 0 (**RS0**), respecting the active **W** (word-size) configuration: `ACC ↔ RS0 (W-bits)`.
 - **SA**:  Swaps the full contents of **ACC** *with* address register 0 (**RA0**) (full 16-bit), ignoring the **W** size configuration: `ACC ↔ RA0 (16-bits)`.
 - **JAL/JMP**: All jumps will be based on register RA0, but linking would be saved on RA1.
   - **JAL**: `RA1 ← PC_next`; `PC ← RA0`
   - **JMP**: `PC ← RA0`
-- **CFG #imm**: Loads the *immediate* (**#imm**) value into the **CFG** register. The **CFG** register can also be accessed at `CSR 0` for reading. *(Useful for changing link width (W) or enabling features without register overhead.)*
+- **CFG #imm**: Loads the *immediate* (**#imm**) value into the **CFG** register. The **CFG** register can also be accessed at `CSR1` for reading. *(Useful for changing link width (W) or enabling features without register overhead.)*
 - **CMP**: Compares **ACC** with **RS0** by subtraction (respecting **W**), updates carry/borrow and an internal ZERO flag. If the next instruction is **BEQz**, it uses this ZERO flag instead of reading ACC directly. `ZERO` flag will clear itself if the next instruction is not BEQz.
 - **Branches** (PC-relative): If (cond): **PC ← PC_next + ( *sign_extend*(BW ? imm8 : imm4) << (BRS ? 2 : 0) )**; Else: **PC ← PC_next**; *flags unchanged*. **ATTENTION**: **BEQz** has a special behaviour if it's executed after a **CMP** instruction.
   - **BEQz #imm**: If preceded by CMP: branch if `ZERO=1`. Else: branch if `ACC==0`. Always clears ZERO.
@@ -209,8 +255,9 @@ The instruction class organization is intended to aid **human understanding and 
 The carry flag (C) is **always updated** by arithmetic and shift operations, but it is **consumed as carry-in when CI is enable**.
 
 - **ADD / INC**: `C = carry-out`
-- **SUB / DEC**: `C = NOT(borrow-out)`
+- **SUB / DEC**: `C = borrow-out`
 - **SHL / SHR**: `C = expelled bit`
+- **SUB with carry-in enabled**: `ACC = ACC − OP2 − C_in`
 
 Its role as an arithmetic input is controlled by the **CI** flag in `CFG`.
 
@@ -218,6 +265,12 @@ Its role as an arithmetic input is controlled by the **CI** flag in `CFG`.
 * When `CI = 1`, carry-in is taken from the current value of `C`.
 
 This design provides explicit, mode-controlled carry propagation without requiring additional arithmetic opcodes, while keeping the default behavior simple and deterministic.
+
+#### Carry propagation
+
+Arithmetic and shift instructions always update the Carry flag based on their result.
+Instructions that accept Carry-in use the current Carry value as an input, and generate a new Carry as output.
+No instruction clears Carry implicitly; Carry is only modified as a result of arithmetic or shift execution.
 
 #### Carry initialization (assembler idioms)
 
@@ -252,7 +305,9 @@ Multi-precision operations are typically implemented by iterating over words fro
 - BW/BRS are global (from CFG). Keep them constant within a function.
 - With imm4 and large scaling (e.g., <<2), targets should be aligned accordingly to avoid padding.
 - Taking a branch does not modify flags and clears any pending XOP.
- 
+
+---
+
 ## CSR Bank (Control & Extensions)
 
 MISA-O defines a small CSR (Control and Status Register) bank to expose core configuration, flags and optional extension state without bloating the general register file. The bank is addressed by a 4-bit index (0–15), each CSR being 16-bit wide.
@@ -268,34 +323,86 @@ In **UL/LK8** modes, the opcodes `RACC` / `RRS` behave as rotate instructions as
 
 Two implementation profiles are envisaged:
 
-- **Compact profile**: only the minimal CSR set is implemented. All unimplemented CSRs read as `0` and ignore writes. This keeps area and complexity close to the original MISA-O core.
+- **Compact**: only the minimal *required* CSR set is implemented. All unimplemented CSRs read as `0` and ignore writes. This keeps area and complexity close to the original MISA-O core.
 
-- **Full profile**: additional CSRs are implemented for richer interrupt handling, debugging and arithmetic extensions (MAD profile). Software must not rely on any CSR beyond *required* (CSR0-4) unless the target profile is explicitly known.
+- **Baseline**: additional CSRs are implemented for richer interrupt handling, debugging and arithmetic extensions (MAD profile). Software must not rely on any CSR beyond *baseline* unless the target profile is explicitly known. Baseline is the recommended minimum target for hosted or compiled languages.
 
-### CSR layout
-
-The following layout is recommended, but only CSR0 is mandatory for baseline compliance:
+### CSR Map
 
 | Idx | Name     | Description                                        | Profile   |
 |-----|----------|----------------------------------------------------|-----------|
 | 0   | CPUID    | CPUID                                              | required  |
 | 1   | CORECFG  | Core configuration and flags (CFG + flags)         | required  |
-| 2   | GPR1     | General-Purpose Register                           | required  |
-| 3   | GPR2     | General-Purpose Register                           | required  |
-| 4   | GPR3     | General-Purpose Register                           | required  |
+| 2   | GPR1     | General-Purpose Register                           | baseline  |
+| 3   | GPR2     | General-Purpose Register                           | baseline  |
+| 4   | GPR3     | General-Purpose Register                           | baseline  |
 | 5   | TIMER    | Cycle/instruction counter (16-bit free-running).   | time      |
-| 6   | TIMERCMP | Comparison value for the Timer.                    | full      |
-| 7   | INTCTRL  | Unified control: Status, Masks, and Watchdog.      | required  |
+| 6   | TIMERCMP | Comparison value for the Timer.                    | time      |
+| 7   | EVTCTRL  | Unified control: Status, Masks, and Watchdog.      | baseline  |
 | 8   | INTADDR  | Interrupt base page (IA alias)                     | interrupt |
 | 9–15| RSV      | Reserved for extensions                            | —         |
+
+Note: EVTCTRL is present in baseline even if the Interrupt Profile is not implemented; fields related to interrupts read as zero when the profile is absent.
+
+---
 
 #### CSR0 – CPUID
 
 **CSR0** is reserved as **CPUID**.
 
-It provides implementation identification and capability discovery. Writes are ignored. The encoding and meaning of CPUID values are implementation-defined.
+It provides implementation identification and capability discovery. Writes are ignored.
+
+**Format:**
+
+- [15:12] VERSION — Architecture version
+  - 0x0 = MISA-O v0.x
+  - 0x1 = MISA-O v1.x (future)
+  - 0xF = Experimental/custom
+
+- [11:8] PROFILES — Optional profile support (1=present)
+  - [11] MAD Profile (multiply-accumulate extensions)
+  - [10] Debug Profile (DBGSTEP, debug facilities)
+  - [9]  Interrupt Profile (RETI/SWI/WFI, ISR support)
+  - [8]  MMU Profile (memory management unit)
+
+- [7:4] VENDOR — Vendor identifier
+  - 0x0 = Reference implementation / unspecified
+  - 0x1 = Reserved for standardization
+  - 0x2-0xE = Vendor-specific (contact registry)
+  - 0xF = Experimental / academic
+
+- [3:0] IMPL — Implementation variant (vendor-defined)
+  - Encodes implementation-specific features such as:
+    - Cache presence/configuration
+    - Pipeline depth
+    - Acceleration units
+    - Custom instruction extensions
+    - Performance tier (e.g., 0=minimal, F=high-performance)
+
+**Usage:**
+Software queries CPUID at startup to detect available features and
+adapt execution paths accordingly.
+
+**Example:**
+```assembly
+; Check for MAD profile support
+CSRLD #0            ; ACC ← CPUID
+SS                  ; RS0 ← CPUID (preserve)
+LDi #0x0800         ; Mask for MAD bit (bit 11)
+AND
+BEQz #no_mad        ; Branch if not supported
+; Use MAD instructions
+```
+
+**Profile Bit Allocation:**
+- Bits [11:9] are **standardized** across all MISA-O implementations
+- Bit [8] (MMU) is **reserved** for future standardization
+- Implementations may expose additional capabilities via **IMPL** field
+
+---
 
 #### CSR1 – CORECFG (Core Configuration)
+
 Combines the architectural **CFG** register (Low Byte) with the read-only ALU flags (High Byte).
 
 - **Bits [7:0] – CFG (R/W)**: maps directly to the core configuration (Branch Width, Scale, Interrupt Enable, Immediate Mode, Sign Mode, Link Mode).
@@ -305,6 +412,8 @@ Combines the architectural **CFG** register (Low Byte) with the read-only ALU fl
   - [10] `N` → Negative flag (MSB of the result according to W)
   - [11] `V` → Overflow flag (signed overflow for ADD/SUB)
 - Bits [15:12] → reserved (read as 0, writes ignored).
+
+---
 
 #### CSR2-4 – GPR (General-Purpose Registers)
 
@@ -325,27 +434,34 @@ These registers are intended to assist calling conventions, reduce memory traffi
 
 See **Calling Convention** section for details.
 
+---
+
 #### CSR5 – TIMER (Cycle Counter)
+
 A 16-bit free-running counter that increments once per **retired instruction** (recommended). Minimal implementations may instead increment once per clock cycle, but software must treat TIMER as an opaque monotonic counter.
 * **Read**: Returns current counter value.
 * **Write**: Loads a new value (e.g., to reset or create delayed events).
 * **Overflow**: Wraps from 0xFFFF to 0x0000 silently.
 
+---
+
 #### CSR6 – TIMERCMP (Timer Compare)
 
 Holds the comparison value for the system timer.
 
-- On each increment of TIMER, if the value transitions from `TIMER != TIMERCMP` to `TIMER == TIMERCMP`, hardware sets the T_P (Timer Pending) bit in INTCTRL.
+- On each increment of TIMER, if the value transitions from `TIMER != TIMERCMP` to `TIMER == TIMERCMP`, hardware sets the T_P (Timer Pending) bit in EVTCTRL.
 - T_P remains set until cleared by software (write-1-to-clear).
 - Changing TIMERCMP does not automatically clear T_P.
 
 On a match event:
 
-1. If INTCTRL.WDOG = 1, the core performs a watchdog reset.
-2. Else, if INTCTRL.T_IE = 1 and CFG.IE = 1, a timer interrupt is raised
+1. If EVTCTRL.WDOG = 1, the core performs a watchdog reset.
+2. Else, if EVTCTRL.T_IE = 1 and CFG.IE = 1, a timer interrupt is raised
    (T_P is set and the core vectors to the ISR).
 
-#### CSR7 – INTCTRL (Interrupt Control & Watchdog)
+---
+
+#### CSR7 – EVTCTRL (Interrupt Control & Watchdog)
 
 Consolidates interrupt enables, pending status, and watchdog policy.
 
@@ -380,6 +496,8 @@ Effective enable per source:
 - External interrupt: taken when CFG.IE = 1 and EXT_IE = 1 and EXT_P = 1.
 - Timer interrupt: taken when CFG.IE = 1, T_IE = 1, WDOG = 0 and T_P = 1.
 
+---
+
 #### CSR8 – INTADDR (Interrupt Base Address)
 
 Alias of the architectural IA register.
@@ -387,7 +505,9 @@ Alias of the architectural IA register.
 - Bits [7:0]  – IA (Interrupt Address page MSB).
 - Bits [15:8] – Reserved.
 
-CSRLD #4 reads IA; CSRST #4 writes IA using ACC[7:0]. No extra physical register is required.
+CSRLD #8 reads IA; CSRST #8 writes IA using ACC[7:0]. No extra physical register is required.
+
+---
 
 #### CSR9-15 - RSV
 
@@ -477,15 +597,15 @@ The interrupt frame is intentionally minimal; software is expected to save only 
 | 0x03      | FLAGS snapshot             | 8b    |
 | 0x04      | IA                         | 8b    |
 | 0x05      | IAR                        | 8b    |
-| 0x06      | RA0                        | 16b   |
-| 0x07–0x0F | Reserved for future use    | —     |
+| 0x06–0x07 | RA0                        | 16b   |
+| 0x08–0x0F | Reserved for future use    | —     |
 
 ### Description:
   - **Interrupts**: *ia* holds the *Interrupt Service Routine* (ISR) page *Most Significant Byte* (MSB). On interrupt:
     - The CPU **stores only the minimal architectural state required for resumption: PC_next, CFG, FLAGS, RA0, IA and IAR** at fixed offsets in page `ia` (see layout below), all other registers are software-managed and must be explicitly saved by the ISR if needed,
     - latches `IAR ← IA`, **clears IE**, clears any pending **XOP**, and
     - **jumps to** `IA<<8 + 0x10` (the ISR entry).
-    - Interrupt address register (`IA`) is mapped at `CSR 1`.
+    - Interrupt address register (`IA`) is mapped at `CSR 8`.
   - **WFI\***: Wait-For-Interrupt makes the processor sleep until an interrupt sign is received.
   - **SWI\***: Triggers a software interrupt; flow identical to an external IRQ: autosave on the ia page, latches `IAR←IA`, clears IE (`IE←0`) and jumps to `IA<<8 + 0x10`.
   - **RETI\***: Restores state from the *IAR* page and resumes execution.
@@ -497,7 +617,7 @@ The interrupt frame is intentionally minimal; software is expected to save only 
       - **IA**  ← [base+0x04]             ; interrupt page MSB
       - **IAR** ← [base+0x05]             ; previous latched page (for nested unwinding)
       - **RA0** ← [base+0x06..0x07]       ; address register
-    - **Not restored by RETI**: **ACC**, **RS0**, **RS1**, **RA0** or any GPR — the ISR must restore them in software before RETI.
+    - **Not restored by RETI**: **ACC**, **RS0**, **RS1**, **RA1** or any GPR — the ISR must restore them in software before RETI.
     - After RETI, **IE** follows the IE bit of the active **CFG** (restored or left as set by the ISR).
   - Fixed layout within the ia page:
 ```
@@ -528,7 +648,7 @@ A typical debug monitor runs as a software ISR (usually the SWI vector) and uses
 
 For implementations that support the Debug Profile, bit **DBGSTEP** (bit 12) of `CORECFG` enables **single-step execution**:
 
-- When `DBGSTEP = 1`, `CFG.IE = 1` and the core is **not** currently inside an ISR (`INTCTRL.IN_ISR = 0`), the hardware behaves as follows:
+- When `DBGSTEP = 1`, `CFG.IE = 1` and the core is **not** currently inside an ISR (`EVTCTRL.IN_ISR = 0`), the hardware behaves as follows:
   1. A normal instruction retires (user code).
   2. Before fetching the next instruction, the core triggers a **SWI** (software interrupt), performing the usual context save on the `IA` page.
   3. On entry to this SWI, the hardware **automatically clears DBGSTEP**.
@@ -659,6 +779,175 @@ Right shifts are **arithmetic** when `SIGN=1` and **logical** when `SIGN=0`.
 
 ---
 
+# Calling Convention
+
+MISA-O defines a standard **calling convention** to enable efficient compilation of high-level languages (particularly C) and interoperability between compiled code and hand-written assembly.
+
+For complete details, examples, and compiler integration guidelines, see **[calling_convention.md](calling_convention.md)**.
+
+---
+
+## Register Usage
+
+### Caller-Saved (Volatile) Registers
+
+Not preserved across function calls. Caller must save if needed.
+
+| Register | Alias | Purpose |
+|----------|-------|---------|
+| ACC      | —     | Return value / scratch |
+| RS0      | A0    | Argument 1 / scratch |
+| RS1      | A1    | Argument 2 / scratch |
+| RA0      | TEMP  | Address calculation / scratch |
+| RA1      | LR    | Link Register (return address, set by JAL) |
+
+### Callee-Saved (Non-Volatile) Registers
+
+Must be preserved if modified. Callee saves/restores in prologue/epilogue.
+
+| Register | Alias | Purpose |
+|----------|-------|---------|
+| GPR1     | SP/S0 | Stack Pointer (by convention) or saved register |
+| GPR2     | S1    | Saved register / staging |
+| GPR3     | S2    | Saved register / link prep |
+
+**Convention:** GPR1 serves as **Stack Pointer (SP)** in standard code.
+
+---
+
+## Function Call Pattern
+
+### 1. **Leaf Function** (no calls, minimal prologue)
+```assembly
+; Simple add function
+add:
+    ADD             ; ACC ← RS0 + RS1
+    JAL             ; Return (no prologue needed)
+```
+
+**Prologue:** 0 bytes ✅  
+**Epilogue:** 0 bytes ✅
+
+### 2. **Non-Leaf Function** (calls others, must save RA1)
+```assembly
+complex:
+    ; === PROLOGUE: Save RA1 ===
+    CSRLD #2            ; ACC ← SP
+    SA                  ; RA0 ← SP
+    SA                  ; ACC ← RA1, swap
+    XMEM #0b1010        ; [RA0++] ← RA1
+    SA                  ; ACC ← new_SP
+    CSRST #2            ; SP ← ACC
+    
+    ; === BODY ===
+    ; [function work, can call others]
+    
+    ; === EPILOGUE: Restore RA1 ===
+    CSRLD #2
+    DEC
+    CSRST #2            ; SP--
+    SA                  ; RA0 ← SP
+    XMEM #0b0000        ; ACC ← saved_RA1
+    SA                  ; RA1 ← ACC
+    JAL
+```
+
+**Prologue:** ~7 bytes, 6 instructions  
+**Epilogue:** ~7 bytes, 7 instructions
+
+---
+
+## Argument Passing
+
+| Argument | Location | Notes |
+|----------|----------|-------|
+| 1st      | RS0      | Caller-saved |
+| 2nd      | RS1      | Caller-saved |
+| 3rd+     | Stack    | Pushed by caller, accessed via SP offset |
+
+**Return value:** ACC (scalars ≤16-bit)
+
+---
+
+## Stack Management
+
+**GPR1 = Stack Pointer (SP)** by convention:
+- Grows **downward** (full descending)
+- Points to **last valid item**
+- Software-managed (no automatic push/pop)
+
+**Example Stack Frame:**
+```
+┌────────────┐ High Address
+│ Args 3+    │ ← Caller pushed
+├────────────┤
+│ Saved RA1  │ ← Callee saved link register
+├────────────┤
+│ Saved GPRs │ ← Callee saved S0/S1/S2 if used
+├────────────┤
+│ Locals     │ ← Callee allocated space
+└────────────┘ ← SP (current)
+   Low Address
+```
+
+---
+
+## Macros for Common Patterns
+
+Assemblers should provide standard macros to hide complexity:
+```assembly
+.macro PROLOGUE_NONLEAF
+    ; Save RA1 to stack
+    CSRLD #2
+    SA
+    SA
+    XMEM #0b1010
+    SA
+    CSRST #2
+.endm
+
+.macro EPILOGUE_NONLEAF
+    ; Restore RA1 from stack
+    CSRLD #2
+    DEC
+    CSRST #2
+    SA
+    XMEM #0b0000
+    SA
+.endm
+
+; Usage:
+my_function:
+    PROLOGUE_NONLEAF
+    ; ... body ...
+    EPILOGUE_NONLEAF
+    JAL
+```
+
+---
+
+### Code Density Comparison
+
+| Function Type | MISA-O | ARM Thumb | RISC-V RVC |
+|---------------|--------|-----------|------------|
+| Leaf          | 0-2B   | 0-2B      | 0-2B       |
+| Non-leaf      | 14B    | 8B        | 18B        |
+
+**Analysis:** MISA-O is competitive with RISC-V and more compact than would be expected from a 4-bit minimal ISA, thanks to nibble encoding and efficient use of SWAP semantics.
+
+---
+
+For detailed information including:
+- Multi-argument functions
+- Struct returns
+- Compiler optimization tips
+- Complete prologue/epilogue variants
+- Integration with toolchains
+
+See **[calling_convention.md](calling_convention.md)**.
+
+---
+
 # Development
 
 The table below lists **candidate instructions** that are *not part of the baseline ISA* but are being evaluated for future inclusion.
@@ -678,7 +967,9 @@ Entries may be changed, merged, promoted or removed without affecting ISA compat
 ## Reference Implementation
 The reference implementation (located at "/design/misa-o_ref.sv") is not made to be performant, efficient, optimal or even synthesizable; its main purpose is to be simple to interpret while also serving as a playground to test the ISA instructions.
 
-### How to run
+---
+
+# How to run
 To run you must have installed icarus verilog (iverilog) and GTKWAVE, open terminal on root directory, from there execute run_tb.bat (windows) or run_tb.sh (linux).
 
 #### Scripts
@@ -729,7 +1020,10 @@ To run you must have installed icarus verilog (iverilog) and GTKWAVE, open termi
      GPR3 | 0 0 0 0   0 0 0 0   0 0 0 0   0 0 0 0 |
           |---------------------------------------| 
 
-## Final Considerations
+---
+
+# Final Considerations
+
 **NEG**: Started with NEG/Negated instructions/behavior, but was replaced with a more default behavior (**XOP**) that only affects the next instruction, this change allowed for a better compression and a more stable behavior, this will also help on the compiler construction.
 
 **LK**: Link was demoted to be replaced by a more versatile "Swap Configuration", now it's possible to enable auto-increment when reading/writing from/to memory with the advantage of also be able to secure a known working state for the functions.
