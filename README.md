@@ -235,9 +235,9 @@ Program with 100 instructions:
 - **XMEM #f**: Extended Memory Operations (opcode 1100 + 4-bit function):
   - Function:
     - `f[3]`: **OP**: 0=Load, 1=Store
-    - `f[2]`: **AM**: 0=none, 1=post-increment
-    - `f[1]`: **DIR**:  0 = +stride (increment), 1 = −stride (decrement)
-    - `f[0]`: **AR**: 0=RA0, 1=RA1
+    - `f[2]`: **AM**: Auto-Modify Mode (0=None, 1=Active)
+    - `f[1]`: **DIR**: Direction (0=Increment, 1=Decrement)
+    - `f[0]`: **AR**: Address Register (RA0 / RA1)
   - Semantics (width W from LINK, little-endian):
     - `addr` = `(AR ? RA1 : RA0) ; alias of the selected register`
     - `stride` = `(W == 16 ? 2 : 1) ; bytes (UL & LK8: 1B; LK16: 2B)`
@@ -249,7 +249,9 @@ Program with 100 instructions:
       - **LK16**: `[addr] ← ACC[7:0]; [addr+1] ← ACC[15:8]`
       - **LK8**: `[addr] ← ACC[7:0]`
       - **UL**: `tmp ← [addr]; tmp[3:0] ← ACC[3:0]; [addr] ← tmp`
-    - If `AM=1`: `addr ← addr + (DIR ? −stride : +stride)`
+    - If AM=1: Enables Auto-Modify mode. The update timing corresponds to standard stack operations:
+      - DIR=0 (Increment): Performs Post-Increment (Access [addr], then addr ← addr + stride).
+      - DIR=1 (Decrement): Performs Pre-Decrement (addr ← addr - stride, then Access [addr]).
     - Flags: **unchanged**.
 - **CSRLD #imm**: Loads CSR into ACC (more details on CSR section).
 - **CSRST #imm**: Write ACC into CSR (more details on CSR section).
