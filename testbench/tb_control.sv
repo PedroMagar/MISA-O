@@ -53,14 +53,11 @@ module tb_misao;
     task automatic validate(input [14:0] addr, input integer cycles, input [15:0] expected_acc, input expected_carry);
         begin
             if (last_addr != addr) begin
-                // Sample after negedge to see the fetched byte address.
+                // Sample mem_addr right after the negedge update so we catch the fetch.
                 @(negedge clk); #0;
                 while (mem_addr != addr) begin
                     @(negedge clk); #0;
                 end
-            end else begin
-                // Back-to-back validate on same byte: just advance one nibble edge.
-                @(negedge clk); #0;
             end
             last_addr = addr;
             repeat (cycles) @(negedge clk);
@@ -72,7 +69,7 @@ module tb_misao;
                 $display("FAIL CARRY @%0d: got=%b exp=%b", addr, test_carry, expected_carry);
                 $fatal(1);
             end
-            $display("SUCCESS AT @%0d: got=%b exp=%b", addr, {test_carry, test_data}, {expected_carry,expected_acc});
+            $display("SUCCESS AT @%0d: got=%h exp=%h", addr, {test_carry, test_data}, {expected_carry,expected_acc});
         end
     endtask
 
@@ -89,59 +86,78 @@ module tb_misao;
         // Test Sequence (Control)
         // ================================================================
 
-        // Phase 1: Conditional branches (UL)
-        memory[1]  = {CFG, XOP};    // XOP CFG
-        memory[2]  = {4'h4, 4'hC};  // cfg=0x4C (UL)
-        memory[3]  = {4'h0, LDI};   // ACC=0
-        memory[4]  = {4'h2, BEQZ};  // BEQZ +2 (taken)
-        memory[5]  = {4'hF, LDI};   // skipped
-        memory[6]  = {4'hF, LDI};   // skipped
-        memory[7]  = {4'h1, LDI};   // ACC=1
-        memory[8]  = {4'h2, BEQZ};  // not taken
-        memory[9]  = {4'h2, LDI};   // ACC=2
+        // Phase 1: UL sanity + BEQZ (imm4)
+        memory[1]  = {4'h4, CFG};   // CFG 0x04 (UL, BW=imm4, BRS=0, IMM=0, CI=0)
+        memory[2]  = {NOP, 4'h0};   // cfg[7:4] + pad
+        memory[3]  = {4'h5, LDI};   // ACC=5
+        memory[4]  = {NOP, NOP};    // NOP sanity
+        memory[5]  = {4'h0, LDI};   // ACC=0
+        memory[6]  = {4'h2, BEQZ};  // BEQZ +2 (taken)
+        memory[7]  = {4'hF, LDI};   // skipped
+        memory[8]  = {4'h1, LDI};   // target ACC=1
+        memory[9]  = {4'h2, BEQZ};  // BEQZ +2 (not taken)
+        memory[10] = {4'h2, LDI};   // ACC=2
 
-        // Phase 2: BTST + BC
-        memory[10] = {4'h3, LDI};   // ACC=3
+        // Phase 2: BC (imm4) with carry clear/set
         memory[11] = {4'h0, LDI};   // ACC=0
-        memory[12] = {4'h1, LDI};   // ACC=1
-        memory[13] = {SS , NOP};    // RS0=1
-        memory[14] = {4'h3, LDI};   // ACC=3
-        memory[15] = {BTST, 4'h1};  // C = ACC[RS0]=1
-        memory[16] = {XOP, 4'h0};   // XOP prefix
-        memory[17] = {4'h2, BC};    // BC taken +2 -> skip next two LDIs
-        memory[18] = {4'hF, LDI};   // skipped
-        memory[19] = {4'hF, LDI};   // skipped
-        memory[20] = {4'h5, LDI};   // ACC=5
+        memory[12] = {NOP, SHL};    // SHL -> C=0
+        memory[13] = {BC, XOP};     // XOP BC (not taken, C=0)
+        memory[14] = {LDI, 4'h2};   // imm=2 + LDI opcode (0x3)
+        memory[15] = {LDI, 4'h3};   // imm=3 + LDI opcode (0x8)
+        memory[16] = {SHL, 4'h8};   // imm=8 + SHL -> C=1
+        memory[17] = {BC, XOP};     // XOP BC (taken, C=1)
+        memory[18] = {LDI, 4'h2};   // imm=2 + LDI opcode (skipped)
+        memory[19] = {LDI, 4'hF};   // imm=F + LDI opcode (target 0x4)
+        memory[20] = {NOP, 4'h4};   // imm=4 + pad
 
-        // Phase 3: JMP via RA0
-        memory[21] = {4'hE, LDI};   // ACC=E
-        memory[22] = {4'h1, LDI};   // ACC=1E
-        memory[23] = {SA , XOP};    // RA0=0x001E
-        memory[24] = {XOP, 4'h0};   // XOP
-        memory[25] = {JMP, 4'h0};   // JMP RA0
-        memory[26] = {4'hF, 4'hF};  // filler
-        memory[27] = {4'hF, 4'hF};  // filler
-        memory[28] = {4'hF, 4'hF};  // filler
-        memory[29] = {4'hF, 4'hF};  // filler
-        memory[30] = {4'h5, LDI};   // target ACC=5
+        // Phase 3: BW=imm8 (BEQZ taken, BC not taken)
+        memory[21] = {4'h4, CFG};   // CFG 0x44 (UL, BW=imm8)
+        memory[22] = {NOP, 4'h4};
+        memory[23] = {4'h0, LDI};   // ACC=0
+        memory[24] = {4'h2, BEQZ};  // BEQZ imm8 +0x02 (taken)
+        memory[25] = {LDI, 4'h0};   // imm high=0 + LDI opcode (skipped)
+        memory[26] = {LDI, 4'hF};   // imm=F (skipped) + LDI opcode (target)
+        memory[27] = {NOP, 4'h6};   // imm=6 + pad
+        memory[28] = {4'h0, LDI};   // ACC=0
+        memory[29] = {NOP, SHL};    // SHL -> C=0
+        memory[30] = {BC, XOP};     // XOP BC imm8 (not taken)
+        memory[31] = {4'h0, 4'h2};  // imm8 low=2, high=0
+        memory[32] = {4'h7, LDI};   // ACC=7
 
-        // Phase 4: JAL to RA0=0x0028
-        memory[31] = {4'h8, LDI};   // ACC=8
-        memory[32] = {4'h2, LDI};   // ACC=0x28
-        memory[33] = {SA , XOP};    // RA0=0x0028
-        memory[34] = {JAL, 4'h0};   // JAL -> jump RA0, link RA1
-        memory[40] = {SA , XOP};    // at target: swap ACC/RA0
-        memory[41] = {RSA, XOP};    // swap RA0/RA1
-        memory[42] = {SA , XOP};    // ACC should end 0x0023
+        // Phase 4: BRS=1 scaling (imm4)
+        memory[33] = {4'h4, CFG};   // CFG 0x24 (UL, BW=imm4, BRS=1)
+        memory[34] = {NOP, 4'h2};
+        memory[35] = {4'h0, LDI};   // ACC=0
+        memory[36] = {4'h1, BEQZ};  // BEQZ +1 (scaled <<2)
+        memory[37] = {4'hF, LDI};   // skipped
+        memory[38] = {NOP, NOP};    // pad
+        memory[39] = {4'h9, LDI};   // target ACC=9
 
-        // Phase 5: Advanced branches (BW/BRS, negative offset, BC not taken)
-        memory[43] = {CFG, XOP};
-        memory[44] = {4'h4, 4'h8};  // CFG=0x48 (BW=imm4, BRS=1)
-        memory[45] = {4'h0, LDI};   // ACC=0
-        memory[46] = {BEQZ, 4'hF};  // BEQZ with imm4=F (negative) scaled by BRS
-        memory[47] = {XOP, 4'h0};   // XOP prefix
-        memory[48] = {BC, 4'h2};    // BC not taken (C=0)
-        memory[49] = {4'h1, LDI};   // Execute sequentially to prove non-taken
+        // Phase 5: LK16 JAL/JMP (RA1 link + jump)
+        memory[40] = {4'h6, CFG};   // CFG 0x06 (LK16, BW=imm4)
+        memory[41] = {NOP, 4'h0};
+        memory[42] = {4'h4, LDI};   // LDI 0x0064 (JAL target pc=100)
+        memory[43] = {4'h0, 4'h6};
+        memory[44] = {NOP, 4'h0};
+        memory[45] = {SA , XOP};    // SA -> RA0=0x0064
+        memory[46] = {NOP, JAL};    // JAL (link to RA1)
+        memory[47] = {NOP, INC};    // fallthrough INC (should be skipped)
+        memory[48] = {NOP, NOP};
+        memory[49] = {NOP, NOP};
+        memory[50] = {NOP, NOP};    // JAL target entry
+        memory[51] = {RSA, XOP};    // RSA (RA0<->RA1)
+        memory[52] = {SA , XOP};    // SA -> ACC=RA1
+        memory[53] = {4'hE, LDI};   // LDI 0x007E (JMP target pc=126)
+        memory[54] = {4'h0, 4'h7};
+        memory[55] = {NOP, 4'h0};
+        memory[56] = {SA , XOP};    // SA -> RA0=0x007E
+        memory[57] = {4'h0, LDI};   // LDI 0x0000
+        memory[58] = {4'h0, 4'h0};
+        memory[59] = {NOP, 4'h0};
+        memory[60] = {JMP, XOP};    // XOP JMP -> pc=RA0
+        memory[61] = {NOP, INC};    // fallthrough INC (should be skipped)
+        memory[62] = {NOP, NOP};
+        memory[63] = {NOP, NOP};    // JMP target entry
 
         // ================================================================
         // Execution & Checks
@@ -149,36 +165,34 @@ module tb_misao;
         
         #50; rst = 0;
 
-        // Phase 1 (UL branches)
-        validate(3, 1, 16'h0000, 1'b0); // LDI -> ACC=0 (sets up BEQZ taken)
-        validate(7, 1, 16'h0001, 1'b0); // LDI -> ACC=1 (after BEQZ jump)
-        validate(9, 1, 16'h0002, 1'b0); // LDI -> ACC=2 (BEQZ not taken)
+        // Phase 1 (UL sanity + BEQZ imm4)
+        validate(3,  1, 16'h0005, 1'b0); // LDI 0x5
+        validate(4,  1, 16'h0005, 1'b0); // NOP (ACC unchanged)
+        validate(5,  1, 16'h0000, 1'b0); // LDI 0x0
+        validate(8,  1, 16'h0001, 1'b0); // BEQZ taken -> LDI 0x1
+        validate(10, 1, 16'h0002, 1'b0); // BEQZ not taken -> LDI 0x2
 
-        // Phase 2 (BTST / BC)
-        validate(10,1, 16'h0003, 1'b0); // LDI -> ACC=3
-        validate(11,1, 16'h0000, 1'b0); // LDI -> ACC=0
-        validate(12,1, 16'h0001, 1'b0); // LDI -> ACC=1
-        validate(13,1, 16'h0000, 1'b0); // SS  -> ACC=0, RS0=1
-        validate(14,1, 16'h0003, 1'b0); // LDI -> ACC=3
-        validate(15,1, 16'h0003, 1'b1); // BTST-> ACC=3, C=ACC[RS0]=1
-        validate(20,1, 16'h0005, 1'b1); // LDI -> ACC=5 (after BC taken)
+        // Phase 2 (BC imm4, C=0 then C=1)
+        validate(11, 1, 16'h0000, 1'b0); // LDI 0x0
+        validate(12, 1, 16'h0000, 1'b0); // SHL -> C=0
+        validate(15, 0, 16'h0003, 1'b0); // BC not taken -> LDI 0x3
+        validate(16, 1, 16'h0000, 1'b1); // SHL -> C=1
+        validate(20, 0, 16'h0004, 1'b1); // BC taken -> LDI 0x4
 
-        // Phase 3 (JMP via RA0)
-        validate(21,1, 16'h000E, 1'b1); // LDI -> ACC=0x000E
-        validate(22,1, 16'h001E, 1'b1); // LDI -> ACC=0x001E
-        validate(23,1, 16'h0000, 1'b1); // SA  -> ACC swap with RA0 (ACC=0)
-        validate(30,1, 16'h0005, 1'b1); // JMP target -> ACC=5
+        // Phase 3 (BW=imm8)
+        validate(23, 1, 16'h0000, 1'b1); // LDI 0x0
+        validate(27, 0, 16'h0006, 1'b1); // BEQZ imm8 taken -> LDI 0x6
+        validate(29, 1, 16'h0000, 1'b0); // SHL -> C=0
+        validate(32, 1, 16'h0007, 1'b0); // BC imm8 not taken -> LDI 0x7
 
-        // Phase 4 (JAL)
-        validate(31,1, 16'h0008, 1'b1); // LDI -> ACC=0x0008
-        validate(32,1, 16'h0028, 1'b1); // LDI -> ACC=0x0028
-        validate(33,1, 16'h001E, 1'b1); // SA  -> ACC=old RA0=0x001E
-        validate(42,1, 16'h0023, 1'b0); // after JAL sequence -> ACC=0x0023
+        // Phase 4 (BRS=1 scaling)
+        validate(35, 1, 16'h0000, 1'b0); // LDI 0x0
+        validate(39, 1, 16'h0009, 1'b0); // BEQZ scaled -> LDI 0x9
 
-        // Phase 5 (advanced branches)
-        validate(45,1, 16'h0000, 1'b0); // LDI -> ACC=0 before negative BEQZ
-        validate(44,1, 16'h0000, 1'b0); // BEQZ negative jump -> ACC stays 0
-        validate(49,1, 16'h0001, 1'b0); // BC not taken -> ACC=1
+        // Phase 5 (LK16 JAL/JMP)
+        validate(50, 1, 16'h0000, 1'b0); // JAL target entry (ACC unchanged)
+        validate(52, 1, 16'h005D, 1'b0); // RA1 link via RSA+SA
+        validate(63, 1, 16'h0000, 1'b0); // JMP target entry (ACC unchanged)
 
         $display("CONTROL TEST DONE (validations)");
         $finish;
