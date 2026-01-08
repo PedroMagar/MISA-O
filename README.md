@@ -6,8 +6,8 @@
 ## Main Docs
 
 - **ISA design**: [README.md](README.md)
-- **Calling convention**: [arch/calling_convention.md](arch/calling_convention.md)
-- **Design history / rationale**: [arch/history.md](arch/history.md)
+- **Calling convention**: [calling_convention.md](arch/calling_convention.md)
+- **Design history / rationale**: [history.md](arch/history.md)
 
 ### Profiles
 
