@@ -90,10 +90,10 @@ module tb_misao;
 
         // Phase 1: LDI (UL -> LK8 -> LK16), aligned with NOPs
         memory[1]  = {4'h5, LDI};    // LDI 0x5 -> ACC=0x0005
-        memory[2]  = {CFG, XOP};     // XOP CFG
+        memory[2]  = {CFG, NOP};     // XOP CFG
         memory[3]  = {4'h0, 4'h1};   // CFG LK8 -> link=LK8
         memory[4]  = {4'h3, LDI};    // LDI 0x00B3 (aligned)
-        memory[5]  = {XOP, 4'hB};    // padding high nibble
+        memory[5]  = {NOP, 4'hB};    // padding high nibble
         memory[6]  = {4'h2, CFG};     // XOP CFG
         memory[7]  = {NOP, 4'h0};   // CFG LK16 -> link=LK16
         memory[8]  = {4'hE, LDI};    // LDI 0xCAFE (aligned)
@@ -101,14 +101,14 @@ module tb_misao;
         memory[10] = {NOP, 4'hC};    // align next phase
 
         // Phase 2: CFG + LDI (byte-aligned vs misaligned cases)
-        memory[11] = {CFG, XOP};     // CFG LK8 (baseline)
+        memory[11] = {CFG, NOP};     // CFG LK8 (baseline)
         memory[12] = {4'h0, 4'h1};
         memory[13] = {LDI, NOP};     // opcode at high nib (unaligned LDI 0x0091)
         memory[14] = {4'h9, 4'h1};
-        memory[15] = {CFG, XOP};     // CFG UL
+        memory[15] = {CFG, NOP};     // CFG UL
         memory[16] = {4'h0, 4'h0};
         memory[17] = {4'h6, LDI};    // LDI 0x6 (UL)
-        memory[18] = {CFG, XOP};     // CFG LK16
+        memory[18] = {CFG, NOP};     // CFG LK16
         memory[19] = {4'h0, 4'h2};
         memory[20] = {4'h7, LDI};    // LDI 0x1357 (aligned)
         memory[21] = {4'h3, 4'h5};
@@ -116,21 +116,21 @@ module tb_misao;
 
         // Phase 3: RACC + RRS (UL -> LK8 -> LK16) with RS0 capture via LK16+SS
         memory[23] = {SS , NOP};     // seed RS0 with ACC (full swap in LK16)
-        memory[24] = {CFG, XOP};     // CFG UL
+        memory[24] = {CFG, NOP};     // CFG UL
         memory[25] = {4'h0, 4'h0};
         memory[26] = {4'hA, LDI};    // LDI 0xA (UL)
         memory[27] = {RACC, NOP};    // rotate ACC nibbles (UL)
         memory[28] = {RRS , XOP};    // RRS (UL rotate RS0 by nibble) -> RS0=0x7135
-        memory[29] = {CFG, XOP};     // hop to LK16 to pull RS0 into ACC
+        memory[29] = {CFG, NOP};     // hop to LK16 to pull RS0 into ACC
         memory[30] = {4'h0, 4'h2};
         memory[31] = {SS , NOP};     // SS (LK16) ACC=RS0=0x7135, RS0=0xA000
-        memory[32] = {CFG, XOP};     // CFG LK8
+        memory[32] = {CFG, NOP};     // CFG LK8
         memory[33] = {4'h0, 4'h1};
         memory[34] = {4'h2, LDI};    // LDI 0x00D2 (aligned)
         memory[35] = {NOP, 4'hD};
         memory[36] = {RACC, NOP};    // rotate ACC by link width (LK8 byte swap)
         memory[37] = {RRS , XOP};    // RRS (LK8 swap bytes in RS0) -> RS0=0x00A0
-        memory[38] = {CFG, XOP};     // hop to LK16 to pull RS0 into ACC
+        memory[38] = {CFG, NOP};     // hop to LK16 to pull RS0 into ACC
         memory[39] = {4'h0, 4'h2};
         memory[40] = {SS , NOP};     // SS (LK16) ACC=RS0=0x00A0, RS0=0xD2A0
         memory[41] = {4'hB, LDI};    // LDI 0x89AB (aligned)
@@ -140,18 +140,18 @@ module tb_misao;
         memory[45] = {RRS , XOP};    // RRS -> NOP in LK16
 
         // Phase 4: SS + RSS (UL -> LK8 -> LK16)
-        memory[46] = {CFG, XOP};     // CFG UL
+        memory[46] = {CFG, NOP};     // CFG UL
         memory[47] = {4'h0, 4'h0};
         memory[48] = {4'h7, LDI};    // LDI 0x7 (UL)
         memory[49] = {SS , NOP};     // SS (UL swap low nibble with RS0)
         memory[50] = {RSS , NOP};    // RSS (swap RS0/RS1)
-        memory[51] = {CFG, XOP};     // CFG LK8
+        memory[51] = {CFG, NOP};     // CFG LK8
         memory[52] = {4'h0, 4'h1};
         memory[53] = {4'h6, LDI};    // LDI 0x00B6 (aligned)
         memory[54] = {NOP, 4'hB};
         memory[55] = {SS , NOP};     // SS (LK8 swap low byte with RS0)
         memory[56] = {RSS , NOP};    // RSS (swap RS0/RS1)
-        memory[57] = {CFG, XOP};     // CFG LK16
+        memory[57] = {CFG, NOP};     // CFG LK16
         memory[58] = {4'h0, 4'h2};
         memory[59] = {4'h4, LDI};    // LDI 0x2244 (aligned)
         memory[60] = {4'h2, 4'h4};
@@ -160,18 +160,18 @@ module tb_misao;
         memory[63] = {RSS , NOP};    // RSS (swap RS0/RS1)
 
         // Phase 5: SA + RSA (UL -> LK8 -> LK16)
-        memory[64] = {CFG, XOP};     // CFG UL
+        memory[64] = {CFG, NOP};     // CFG UL
         memory[65] = {4'h0, 4'h0};
         memory[66] = {4'hC, LDI};    // LDI 0xC (UL)
         memory[67] = {SA , XOP};     // SA (swap ACC/RA0)
         memory[68] = {RSA, XOP};     // RSA (swap RA0/RA1)
-        memory[69] = {CFG, XOP};     // CFG LK8
+        memory[69] = {CFG, NOP};     // CFG LK8
         memory[70] = {4'h0, 4'h1};
         memory[71] = {4'hE, LDI};    // LDI 0x00DE (aligned)
         memory[72] = {NOP, 4'hD};
         memory[73] = {SA , XOP};     // SA (swap ACC/RA0)
         memory[74] = {RSA, XOP};     // RSA (swap RA0/RA1)
-        memory[75] = {CFG, XOP};     // CFG LK16
+        memory[75] = {CFG, NOP};     // CFG LK16
         memory[76] = {4'h0, 4'h2};
         memory[77] = {4'hD, LDI};    // LDI 0xABCD (aligned)
         memory[78] = {4'hB, 4'hC};
@@ -180,14 +180,14 @@ module tb_misao;
         memory[81] = {RSA, XOP};     // RSA (swap RA0/RA1)
 
         // Phase 6: Mixed
-        memory[82]  = {CFG , XOP};   // CFG LK16
+        memory[82]  = {CFG , NOP};   // CFG LK16
         memory[83]  = {4'h0, 4'h2};  // imm1=0 / imm0=2  (CFG=0x02)
 
         memory[84]  = {4'h0, LDI};   // LDi 0xEBA0                      imm0=A / LDI16 start
         memory[85]  = {4'hB, 4'hA};  //                                 imm2=A / imm1=B
         memory[86]  = {XOP , 4'hE};  // imm3=E / XOP (SA)
         memory[87]  = {XOP , SA };   // SA -> RA0=0xEBA0 & ACC=0x00DE / XOP (RSA)
-        memory[88]  = {XOP , RSA};   // RSA -> RA1=EBA0 & RA0=0xABCD / XOP (CFG UL)
+        memory[88]  = {NOP , RSA};   // RSA -> RA1=EBA0 & RA0=0xABCD / XOP (CFG UL)
 
         memory[89]  = {4'h0, CFG};   // imm0=0 (0x00) / CFG
         memory[90]  = {LDI , 4'h0};  // imm1=0 / LDI UL 0xE
@@ -195,7 +195,7 @@ module tb_misao;
         memory[92]  = {4'hF, LDI};   // imm0=F / LDI UL 0xF
         memory[93]  = {NOP , RACC};  // RACC UL / XOP (CFG LK8)
 
-        memory[94]  = {CFG, XOP };   // CFG LK8
+        memory[94]  = {CFG, NOP };   // CFG LK8
         memory[95]  = {4'h0, 4'h1};  // 
         memory[96]  = {4'hE, LDI};   // LDi 0xBE
         memory[97]  = {RACC, 4'hB};  // RACC
@@ -205,7 +205,7 @@ module tb_misao;
         memory[101] = {SA  , XOP};   // XOP (RSA) / SA -> ACC=0, RA0=BEFE
         memory[102] = {RSA , XOP};   // XOP (CFG LK16) / RSA -> RA1=EBA0
 
-        memory[103] = {CFG , XOP};   // XOP (CFG LK16) / CFG
+        memory[103] = {CFG , NOP};   // XOP (CFG LK16) / CFG
         memory[104] = {4'h0, 4'h2};  // imm1=0 / imm0=2  (0x02)
         memory[105] = {4'hB, LDI};   // imm0=B / LDI16 0xFEEB
         memory[106] = {4'hE, 4'hE};  // imm2=E / imm1=E
@@ -213,7 +213,7 @@ module tb_misao;
         memory[108] = {RSS , RSS};   // RSS (swap) / RSS (swap back)
         memory[109] = {SS  , SS };   // SS -> ACC=FEEB / SS -> RS0=FEEB
 
-        memory[110] = {CFG , XOP};   // XOP (CFG LK8) / CFG
+        memory[110] = {CFG , NOP};   // XOP (CFG LK8) / CFG
         memory[111] = {4'h0, 4'h1};  // imm1=0 / imm0=1  (0x01)
         memory[112] = {RRS , XOP};   // XOP (RRS) / RRS -> RS0 rot FEEB->EBFE
         memory[113] = {4'hA, LDI};   // imm0=0 / LDI8 0xA0

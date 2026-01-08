@@ -10,7 +10,7 @@ localparam [3:0] SHL  = 4'b0011;
 localparam [3:0] BTST = 4'b1011;
 localparam [3:0] BEQZ = 4'b0111;
 localparam [3:0] JAL  = 4'b1111;
-localparam [3:0] CC   = 4'b0010;
+localparam [3:0] CFG  = 4'b0010;
 localparam [3:0] RACC = 4'b0110;
 localparam [3:0] RSS  = 4'b1010;
 localparam [3:0] SS   = 4'b1110;
@@ -28,14 +28,16 @@ localparam [3:0] SHR  = 4'b0011;
 localparam [3:0] TST  = 4'b1011;
 localparam [3:0] BC   = 4'b0111;
 localparam [3:0] JMP  = 4'b1111;
-localparam [3:0] CFG  = 4'b0010;
+localparam [3:0] CMP  = 4'b0010;
 localparam [3:0] RRS  = 4'b0110;
 localparam [3:0] RSA  = 4'b1010;
 localparam [3:0] SA   = 4'b1110;
-localparam [3:0] CMP  = 4'b0100;
-localparam [3:0] RETI = 4'b1100;
-localparam [3:0] SWI  = 4'b1000;
-localparam [3:0] WFI  = 4'b0000;
+
+// Reserved for Extensions
+localparam [3:0] RSV1  = 4'b0100;
+localparam [3:0] RSV2  = 4'b1100;
+localparam [3:0] RSV3  = 4'b1000;
+localparam [3:0] RSV4  = 4'b0000;
 
 // Special Instructions
 localparam [3:0] CSRLD = 4'b0110;

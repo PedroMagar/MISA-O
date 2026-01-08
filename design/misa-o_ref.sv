@@ -20,7 +20,7 @@ module misao (
     // Opcodes (5-bit: {flag_xop, nibble})
     localparam [4:0] LDI  = 5'b00100;
     localparam [4:0] XOP  = 5'b01000;
-    localparam [4:0] CFG  = 5'b10001;
+    localparam [4:0] CFG  = 5'b00010;
     localparam [4:0] SS   = 5'b01110;
     localparam [4:0] SA   = 5'b11110;
     localparam [4:0] RSS  = 5'b01010;
@@ -61,6 +61,13 @@ module misao (
                                 pc[0] ? mem_data_in[7:4] : mem_data_in[3:0];
     wire [4:0] instruction    = {flag_xop, current_nibble};
     wire [7:0] cfg_snapshot   = {1'b0, flag_bw, flag_brs, flag_ie, flag_cen, flag_sign, link_state};
+    
+    wire [15:0] dbg_acc = {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]}; // White-box DEBUG
+    wire [15:0] dbg_rs0 = bank_src[0];      // White-box DEBUG
+    wire [15:0] dbg_rs1 = bank_src[1];      // White-box DEBUG
+    wire [15:0] dbg_ra0 = bank_adr[0];      // White-box DEBUG
+    wire [15:0] dbg_ra1 = bank_adr[1];      // White-box DEBUG
+    wire        dbg_carry = operation_carry;// White-box DEBUG
 
     // Outputs
     assign test_data  = {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]};
