@@ -21,12 +21,22 @@ module misao (
     localparam [4:0] LDI  = 5'b00100;
     localparam [4:0] XOP  = 5'b01000;
     localparam [4:0] CFG  = 5'b00010;
+    localparam [4:0] ADD  = 5'b00001;
+    localparam [4:0] INC  = 5'b01001;
+    localparam [4:0] AND  = 5'b00101;
+    localparam [4:0] OR   = 5'b01101;
+    localparam [4:0] SHL  = 5'b00011;
     localparam [4:0] SS   = 5'b01110;
     localparam [4:0] SA   = 5'b11110;
     localparam [4:0] RSS  = 5'b01010;
     localparam [4:0] RSA  = 5'b11010;
     localparam [4:0] RRS  = 5'b10110;
     localparam [4:0] RACC = 5'b00110;
+    localparam [4:0] SUB  = 5'b10001;
+    localparam [4:0] DEC  = 5'b11001;
+    localparam [4:0] INV  = 5'b10101;
+    localparam [4:0] XOR  = 5'b11101;
+    localparam [4:0] SHR  = 5'b10011;
 
     // Registers
     reg [15:0] pc;                   // Nibble-addressed PC
@@ -39,7 +49,8 @@ module misao (
     reg flag_bw;                     // Branch Immediate Width
     reg flag_brs;                    // Branch Relative Scale
     reg flag_ie;
-    reg flag_cen;
+    reg flag_cen;                    // Carry-in Enable (CI)
+    reg flag_imm;
     reg flag_sign;
     reg [1:0] link_state;
 
@@ -57,11 +68,18 @@ module misao (
     reg [1:0]  cfg_index;
     reg [7:0]  cfg_shift;
 
+    // ALU immediate helpers
+    reg        imm_pending;
+    reg [2:0]  imm_remaining;
+    reg [2:0]  imm_index;
+    reg [15:0] imm_shift;
+    reg [4:0]  imm_opcode;
+
     wire [3:0] current_nibble = (pc == 16'h0001) ? mem_data_in[3:0] :
                                 pc[0] ? mem_data_in[7:4] : mem_data_in[3:0];
     wire [4:0] instruction    = {flag_xop, current_nibble};
-    wire [7:0] cfg_snapshot   = {1'b0, flag_bw, flag_brs, flag_ie, flag_cen, flag_sign, link_state};
-    
+    wire [7:0] cfg_snapshot   = {flag_cen, flag_bw, flag_brs, flag_ie, flag_imm, flag_sign, link_state};
+
     wire [15:0] dbg_acc = {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]}; // White-box DEBUG
     wire [15:0] dbg_rs0 = bank_src[0];      // White-box DEBUG
     wire [15:0] dbg_rs1 = bank_src[1];      // White-box DEBUG
@@ -92,6 +110,7 @@ module misao (
             flag_brs         <= 1'b0;
             flag_ie          <= 1'b0;
             flag_cen         <= 1'b1;
+            flag_imm         <= 1'b0;
             flag_sign        <= 1'b1;
             link_state       <= UL;
             operation_carry  <= 1'b0;
@@ -103,6 +122,11 @@ module misao (
             cfg_index        <= 2'd0;
             ldi_shift        <= 16'h0;
             cfg_shift        <= 8'h0;
+            imm_pending      <= 1'b0;
+            imm_remaining    <= 3'd0;
+            imm_index        <= 3'd0;
+            imm_shift        <= 16'h0;
+            imm_opcode       <= 5'h00;
             bank_acc[0]      <= 4'h0;
             bank_acc[1]      <= 4'h0;
             bank_acc[2]      <= 4'h0;
@@ -124,10 +148,11 @@ module misao (
                 pc                      <= pc + 1'b1;
                 if (cfg_remaining == 2'd1) begin
                     cfg_pending <= 1'b0;
+                    flag_cen    <= next_cfg[7];
                     flag_bw     <= next_cfg[6];
                     flag_brs    <= next_cfg[5];
                     flag_ie     <= next_cfg[4];
-                    flag_cen    <= next_cfg[3];
+                    flag_imm    <= next_cfg[3];
                     flag_sign   <= next_cfg[2];
                     link_state  <= next_cfg[1:0];
                 end
@@ -162,6 +187,91 @@ module misao (
                 end
                 flag_xop <= 1'b0;
             end
+            // Pending ALU immediate collection
+            else if (imm_pending) begin
+                reg [15:0] next_imm;
+                next_imm                       = imm_shift;
+                next_imm[imm_index*4 +: 4]     = current_nibble;
+                imm_shift                      <= next_imm;
+                imm_index                      <= imm_index + 1'b1;
+                imm_remaining                  <= imm_remaining - 1'b1;
+                pc                             <= pc + 1'b1;
+                if (imm_remaining == 3'd1) begin
+                    imm_pending <= 1'b0;
+                    case (imm_opcode)
+                        ADD: begin
+                            reg [4:0] sum4;
+                            reg [8:0] sum8;
+                            reg [16:0] sum16;
+                            reg carry_in;
+                            carry_in = flag_cen ? operation_carry : 1'b0;
+                            if (link_state == UL) begin
+                                sum4 = {1'b0, bank_acc[0]} + {1'b0, next_imm[3:0]} + {4'b0, carry_in};
+                                bank_acc[0] <= sum4[3:0];
+                                operation_carry <= sum4[4];
+                            end else if (link_state == LK8) begin
+                                sum8 = {1'b0, bank_acc[1], bank_acc[0]} + {1'b0, next_imm[7:0]} + {8'b0, carry_in};
+                                {bank_acc[1], bank_acc[0]} <= sum8[7:0];
+                                operation_carry <= sum8[8];
+                            end else begin
+                                sum16 = {1'b0, bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} + {1'b0, next_imm} + {16'b0, carry_in};
+                                {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} <= sum16[15:0];
+                                operation_carry <= sum16[16];
+                            end
+                        end
+                        SUB: begin
+                            reg [4:0] diff4;
+                            reg [8:0] diff8;
+                            reg [16:0] diff16;
+                            reg borrow_in;
+                            borrow_in = flag_cen ? operation_carry : 1'b0;
+                            if (link_state == UL) begin
+                                diff4 = {1'b0, bank_acc[0]} - {1'b0, next_imm[3:0]} - {4'b0, borrow_in};
+                                bank_acc[0] <= diff4[3:0];
+                                operation_carry <= ({1'b0, bank_acc[0]} < ({1'b0, next_imm[3:0]} + {4'b0, borrow_in}));
+                            end else if (link_state == LK8) begin
+                                diff8 = {1'b0, bank_acc[1], bank_acc[0]} - {1'b0, next_imm[7:0]} - {8'b0, borrow_in};
+                                {bank_acc[1], bank_acc[0]} <= diff8[7:0];
+                                operation_carry <= ({1'b0, bank_acc[1], bank_acc[0]} < ({1'b0, next_imm[7:0]} + {8'b0, borrow_in}));
+                            end else begin
+                                diff16 = {1'b0, bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} - {1'b0, next_imm} - {16'b0, borrow_in};
+                                {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} <= diff16[15:0];
+                                operation_carry <= ({1'b0, bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} < ({1'b0, next_imm} + {16'b0, borrow_in}));
+                            end
+                        end
+                        AND: begin
+                            if (link_state == UL) begin
+                                bank_acc[0] <= bank_acc[0] & next_imm[3:0];
+                            end else if (link_state == LK8) begin
+                                {bank_acc[1], bank_acc[0]} <= {bank_acc[1], bank_acc[0]} & next_imm[7:0];
+                            end else begin
+                                {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} <= {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} & next_imm;
+                            end
+                        end
+                        OR: begin
+                            if (link_state == UL) begin
+                                bank_acc[0] <= bank_acc[0] | next_imm[3:0];
+                            end else if (link_state == LK8) begin
+                                {bank_acc[1], bank_acc[0]} <= {bank_acc[1], bank_acc[0]} | next_imm[7:0];
+                            end else begin
+                                {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} <= {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} | next_imm;
+                            end
+                        end
+                        XOR: begin
+                            if (link_state == UL) begin
+                                bank_acc[0] <= bank_acc[0] ^ next_imm[3:0];
+                            end else if (link_state == LK8) begin
+                                {bank_acc[1], bank_acc[0]} <= {bank_acc[1], bank_acc[0]} ^ next_imm[7:0];
+                            end else begin
+                                {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} <= {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} ^ next_imm;
+                            end
+                        end
+                        default: begin
+                        end
+                    endcase
+                end
+                flag_xop <= 1'b0;
+            end
             // Normal decode
             else begin
                 case (instruction)
@@ -182,7 +292,7 @@ module misao (
                         ldi_index     <= 3'd0;
                         ldi_shift     <= 16'h0000;
                         ldi_remaining <= (link_state == UL)  ? 3'd1 :
-                                         (link_state == LK8) ? 3'd2 : 3'd4;
+                                        (link_state == LK8) ? 3'd2 : 3'd4;
                         pc            <= pc + 1'b1;
                         flag_xop      <= 1'b0;
                     end
@@ -210,6 +320,204 @@ module misao (
                                 bank_src[0] <= acc_val;
                             end
                         endcase
+                        pc       <= pc + 1'b1;
+                        flag_xop <= 1'b0;
+                    end
+                    ADD: begin
+                        if (flag_imm) begin
+                            imm_pending   <= 1'b1;
+                            imm_index     <= 3'd0;
+                            imm_shift     <= 16'h0000;
+                            imm_remaining <= (link_state == UL)  ? 3'd1 :
+                                             (link_state == LK8) ? 3'd2 : 3'd4;
+                            imm_opcode    <= ADD;
+                        end else begin
+                            reg [4:0] sum4;
+                            reg [8:0] sum8;
+                            reg [16:0] sum16;
+                            reg carry_in;
+                            carry_in = flag_cen ? operation_carry : 1'b0;
+                            if (link_state == UL) begin
+                                sum4 = {1'b0, bank_acc[0]} + {1'b0, bank_src[0][3:0]} + {4'b0, carry_in};
+                                bank_acc[0] <= sum4[3:0];
+                                operation_carry <= sum4[4];
+                            end else if (link_state == LK8) begin
+                                sum8 = {1'b0, bank_acc[1], bank_acc[0]} + {1'b0, bank_src[0][7:0]} + {8'b0, carry_in};
+                                {bank_acc[1], bank_acc[0]} <= sum8[7:0];
+                                operation_carry <= sum8[8];
+                            end else begin
+                                sum16 = {1'b0, bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} + {1'b0, bank_src[0]} + {16'b0, carry_in};
+                                {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} <= sum16[15:0];
+                                operation_carry <= sum16[16];
+                            end
+                        end
+                        pc       <= pc + 1'b1;
+                        flag_xop <= 1'b0;
+                    end
+                    SUB: begin
+                        if (flag_imm) begin
+                            imm_pending   <= 1'b1;
+                            imm_index     <= 3'd0;
+                            imm_shift     <= 16'h0000;
+                            imm_remaining <= (link_state == UL)  ? 3'd1 :
+                                             (link_state == LK8) ? 3'd2 : 3'd4;
+                            imm_opcode    <= SUB;
+                        end else begin
+                            reg [4:0] diff4;
+                            reg [8:0] diff8;
+                            reg [16:0] diff16;
+                            reg borrow_in;
+                            borrow_in = flag_cen ? operation_carry : 1'b0;
+                            if (link_state == UL) begin
+                                diff4 = {1'b0, bank_acc[0]} - {1'b0, bank_src[0][3:0]} - {4'b0, borrow_in};
+                                bank_acc[0] <= diff4[3:0];
+                                operation_carry <= ({1'b0, bank_acc[0]} < ({1'b0, bank_src[0][3:0]} + {4'b0, borrow_in}));
+                            end else if (link_state == LK8) begin
+                                diff8 = {1'b0, bank_acc[1], bank_acc[0]} - {1'b0, bank_src[0][7:0]} - {8'b0, borrow_in};
+                                {bank_acc[1], bank_acc[0]} <= diff8[7:0];
+                                operation_carry <= ({1'b0, bank_acc[1], bank_acc[0]} < ({1'b0, bank_src[0][7:0]} + {8'b0, borrow_in}));
+                            end else begin
+                                diff16 = {1'b0, bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} - {1'b0, bank_src[0]} - {16'b0, borrow_in};
+                                {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} <= diff16[15:0];
+                                operation_carry <= ({1'b0, bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} < ({1'b0, bank_src[0]} + {16'b0, borrow_in}));
+                            end
+                        end
+                        pc       <= pc + 1'b1;
+                        flag_xop <= 1'b0;
+                    end
+                    INC: begin
+                        reg [4:0] sum4;
+                        reg [8:0] sum8;
+                        reg [16:0] sum16;
+                        if (link_state == UL) begin
+                            sum4 = {1'b0, bank_acc[0]} + 5'd1;
+                            bank_acc[0] <= sum4[3:0];
+                            operation_carry <= sum4[4];
+                        end else if (link_state == LK8) begin
+                            sum8 = {1'b0, bank_acc[1], bank_acc[0]} + 9'd1;
+                            {bank_acc[1], bank_acc[0]} <= sum8[7:0];
+                            operation_carry <= sum8[8];
+                        end else begin
+                            sum16 = {1'b0, bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} + 17'd1;
+                            {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} <= sum16[15:0];
+                            operation_carry <= sum16[16];
+                        end
+                        pc       <= pc + 1'b1;
+                        flag_xop <= 1'b0;
+                    end
+                    DEC: begin
+                        reg [4:0] diff4;
+                        reg [8:0] diff8;
+                        reg [16:0] diff16;
+                        if (link_state == UL) begin
+                            diff4 = {1'b0, bank_acc[0]} - 5'd1;
+                            bank_acc[0] <= diff4[3:0];
+                            operation_carry <= ({1'b0, bank_acc[0]} < 5'd1);
+                        end else if (link_state == LK8) begin
+                            diff8 = {1'b0, bank_acc[1], bank_acc[0]} - 9'd1;
+                            {bank_acc[1], bank_acc[0]} <= diff8[7:0];
+                            operation_carry <= ({1'b0, bank_acc[1], bank_acc[0]} < 9'd1);
+                        end else begin
+                            diff16 = {1'b0, bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} - 17'd1;
+                            {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} <= diff16[15:0];
+                            operation_carry <= ({1'b0, bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} < 17'd1);
+                        end
+                        pc       <= pc + 1'b1;
+                        flag_xop <= 1'b0;
+                    end
+                    AND: begin
+                        if (flag_imm) begin
+                            imm_pending   <= 1'b1;
+                            imm_index     <= 3'd0;
+                            imm_shift     <= 16'h0000;
+                            imm_remaining <= (link_state == UL)  ? 3'd1 :
+                                             (link_state == LK8) ? 3'd2 : 3'd4;
+                            imm_opcode    <= AND;
+                        end else begin
+                            if (link_state == UL) begin
+                                bank_acc[0] <= bank_acc[0] & bank_src[0][3:0];
+                            end else if (link_state == LK8) begin
+                                {bank_acc[1], bank_acc[0]} <= {bank_acc[1], bank_acc[0]} & bank_src[0][7:0];
+                            end else begin
+                                {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} <= {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} & bank_src[0];
+                            end
+                        end
+                        pc       <= pc + 1'b1;
+                        flag_xop <= 1'b0;
+                    end
+                    INV: begin
+                        if (link_state == UL) begin
+                            bank_acc[0] <= ~bank_acc[0];
+                        end else if (link_state == LK8) begin
+                            {bank_acc[1], bank_acc[0]} <= ~{bank_acc[1], bank_acc[0]};
+                        end else begin
+                            {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} <= ~{bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]};
+                        end
+                        pc       <= pc + 1'b1;
+                        flag_xop <= 1'b0;
+                    end
+                    OR: begin
+                        if (flag_imm) begin
+                            imm_pending   <= 1'b1;
+                            imm_index     <= 3'd0;
+                            imm_shift     <= 16'h0000;
+                            imm_remaining <= (link_state == UL)  ? 3'd1 :
+                                             (link_state == LK8) ? 3'd2 : 3'd4;
+                            imm_opcode    <= OR;
+                        end else begin
+                            if (link_state == UL) begin
+                                bank_acc[0] <= bank_acc[0] | bank_src[0][3:0];
+                            end else if (link_state == LK8) begin
+                                {bank_acc[1], bank_acc[0]} <= {bank_acc[1], bank_acc[0]} | bank_src[0][7:0];
+                            end else begin
+                                {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} <= {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} | bank_src[0];
+                            end
+                        end
+                        pc       <= pc + 1'b1;
+                        flag_xop <= 1'b0;
+                    end
+                    XOR: begin
+                        if (flag_imm) begin
+                            imm_pending   <= 1'b1;
+                            imm_index     <= 3'd0;
+                            imm_shift     <= 16'h0000;
+                            imm_remaining <= (link_state == UL)  ? 3'd1 :
+                                             (link_state == LK8) ? 3'd2 : 3'd4;
+                            imm_opcode    <= XOR;
+                        end else begin
+                            if (link_state == UL) begin
+                                bank_acc[0] <= bank_acc[0] ^ bank_src[0][3:0];
+                            end else if (link_state == LK8) begin
+                                {bank_acc[1], bank_acc[0]} <= {bank_acc[1], bank_acc[0]} ^ bank_src[0][7:0];
+                            end else begin
+                                {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} <= {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} ^ bank_src[0];
+                            end
+                        end
+                        pc       <= pc + 1'b1;
+                        flag_xop <= 1'b0;
+                    end
+                    SHL: begin
+                        if (link_state == UL) begin
+                            {operation_carry, bank_acc[0]} <= {bank_acc[0][3], bank_acc[0][2:0], 1'b0};
+                        end else if (link_state == LK8) begin
+                            {operation_carry, bank_acc[1], bank_acc[0]} <= {bank_acc[1], bank_acc[0], 1'b0};
+                        end else begin
+                            {operation_carry, bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} <= {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0], 1'b0};
+                        end
+                        pc       <= pc + 1'b1;
+                        flag_xop <= 1'b0;
+                    end
+                    SHR: begin
+                        if (link_state == UL) begin
+                            operation_carry <= bank_acc[0][0];
+                            bank_acc[0] <= {1'b0, bank_acc[0][3:1]};
+                        end else if (link_state == LK8) begin
+                            operation_carry <= bank_acc[0][0];
+                            {bank_acc[1], bank_acc[0]} <= {1'b0, bank_acc[1], bank_acc[0]} >> 1;
+                        end else begin
+                            operation_carry <= bank_acc[0][0];
+                            {bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} <= {1'b0, bank_acc[3], bank_acc[2], bank_acc[1], bank_acc[0]} >> 1;
+                        end
                         pc       <= pc + 1'b1;
                         flag_xop <= 1'b0;
                     end
