@@ -138,11 +138,12 @@ MISA-O uses **nibble-based encoding** with variable-length instructions:
 ¹ *Two 4-bit instructions pack into a single byte*
 
 **Key Points:**
-- Instructions are **nibble-aligned** (not byte-aligned)
-- Simple operations (ADD, SS, etc) can pair in 1 byte
-- Complex operations (CFG, LDi) use 2-3 bytes
+- Instructions are **nibble-aligned** (not byte-aligned).
+- Nibble order within a byte is fixed as low first
+- PC addresses instruction nibbles directly.
+- Simple operations (ADD, SS, etc) can pair in 1 byte.
+- Complex operations (CFG, LDi) use 2-3 bytes.
 - When `CFG.IMM` is enable, relevant instructions (ADD, SUB, AND, OR, XOR, TST) will increase by W-size to accomodate such immediate (BTST will always increase by 4-bit because it's enough to accomodate the 16 positions of the register).
-- Average instruction size: **~1.5 bytes**
 
 ---
 
