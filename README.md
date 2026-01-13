@@ -95,7 +95,7 @@ The following table lists the architecture instructions:
 | 1101 |OR        |XOR       | OR / XOR                                             |
 | 0011 |SHL       |SHR       | Shift Left / Right                                   |
 | 1011 |BTST      |TST       | Bit Test / Test                                      |
-| 0111 |BEQz      |BC        | Branch if Equal Zero / Branch if Carry               |
+| 0111 |BZ        |BC        | Branch on Zero flag / Branch on Carry flag           |
 | 1111 |JAL       |JMP       | Jump and Link / Jump                                 |
 | 0010 |CFG       |CMP       | Load Configuration / Compare                         |
 | 0110 |RACC      |RRS       | Rotate Accumulator/ Rotate Register Source 0         |
@@ -133,7 +133,7 @@ MISA-O uses **nibble-based encoding** with variable-length instructions:
 | CFG Update     | 4-bit + 8-bit imm       | 1.5B | `CFG #imm` (paired)                      |
 | CSR access     | 4-bit + 4-bit index     | 1B   | `CSRLD #5`                               |
 | Memory         | 4-bit + 4-bit func      | 1B   | `XMEM #0b1010`                         |
-| Branch         | 4-bit + imm4/8          | 1-2B | `BEQz #target` (BW-dependent)            |
+| Branch         | 4-bit + imm4/8          | 1-2B | `BZ #target` (BW-dependent)              |
 
 ¹ *Two 4-bit instructions pack into a single byte*
 
@@ -182,8 +182,8 @@ MISA-O uses **nibble-based encoding** with variable-length instructions:
   - `N = MSB(tmp)`
   - `V = signed overflow on subtraction`
 - **Branches** (PC-relative): If (cond): **PC ← PC_next + ( *sign_extend*(BW ? imm8 : imm4) << (BRS ? 2 : 0) )**; Else: **PC ← PC_next**; *flags unchanged*.
-  - **BEQz #imm**: Branch if `Z == 1`.
-  - **BC   #imm**: Branch if `C == 1`.
+  - **BZ #imm**: Branch on Z flag.
+  - **BC #imm**: Branch on C flag.
   - **BTST/BTSTI**:
     - If `IMM = 0`: `idx = RS0[3:0]`.
     - If `IMM = 1`: `idx = imm4` (low 4 bits of the immediate).
