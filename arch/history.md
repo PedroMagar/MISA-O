@@ -4,7 +4,7 @@
 
 **LK**: Link was demoted to be replaced by a more versatile "Swap Configuration", now it's possible to enable auto-increment when reading/writing from/to memory with the advantage of also be able to secure a known working state for the functions.
 
-**Branches**: Planned to be based on RA0, under some consideration it was changed to immediate value. Because of the small quantity of registers this seems more reasonable, but could be changed back to utilize RA0.
+**Branches**: Early drafts considered branches based on **RA0** (and later a selectable mode), but this was replaced by a fully deterministic **PC-relative immediate** model. Branches are now encoded as a fixed **16-bit (2-byte)** `BRC`, with `func` acting as a **flag mask** `{N,Z,V,C}` and `imm8` providing the signed displacement relative to `PC_next`. This keeps control-flow uniform and toolchain-friendly: comparisons/tests (`CMP`, `TST`, `BTST`) *produce* flags, while `BRC` only *consumes* them. The previous scaling/mode concept (**BRS**) was removed to avoid ambiguous offset interpretation.
 
 **SS/SA & CFG**: SS and SA was initially designed for quick register swapping, this design was adjusted to allow partial swaps respecting **W** (useful for endianness control). To complement this, **CFG** now supports immediate loading, easing state management and reducing register pressure. **SA** remains a full 16-bit swap for address manipulation, as partial swaps provide little benefit in this context.
 

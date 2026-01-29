@@ -53,19 +53,15 @@ Accumulators can be linked into wider configurations (2×8-bit or 1×16-bit), wh
   - RA0: Active address.
   - RA1: Return address.
 - 1x8-bit CFG (Configuration) register.
-  - [7]: CI - Carry-in, (0: disable / 1: enable). Reset: 0 (disable).
+  - [7]: **RSV** - Reserved.
+  - [6]: **RSV** - Reserved.
+  - [5]: **CI** - Carry-in, (0: disable / 1: enable). Reset: 0 (disable).
     - 0: Carry-in = 0 (ignore carry, default)
     - 1: Carry-in = C flag (use carry)
-  - [6]: BW - Branch immediate width. Reset: 0 (imm4).
-    - 0: imm4 (4-bit total)
-    - 1: imm8 (8-bit total)
-  - [5]: BRS - Branch relative scale. Reset: 0 (<<0).
-    - 0: shift by 0, 1-byte step (Default).
-    - 1: shift by 2, 4-byte step.
-  - [4]: IE - Interrupts (0: disable / 1: enable). Reset: 0 (disable).
-  - [3]: IMM - Immediate instruction mode (0: disable / 1: enable). Reset: 0 (disable).
-  - [2]: SIGN - Signed mode (1: signed / 0: unsigned). Reset: 0 (unsigned).
-  - [1:0]: W - LINK - Link Mode:
+  - [4]: **IE** - Interrupts (0: disable / 1: enable). Reset: 0 (disable).
+  - [3]: **IMM** - Immediate instruction mode (0: disable / 1: enable). Reset: 0 (disable).
+  - [2]: **SIGN** - Signed mode (1: signed / 0: unsigned). Reset: 0 (unsigned).
+  - [1:0]: **W** - LINK - Link Mode:
     - 2b00: UL (Unlinked) - 4-bit mode (Default).
     - 2b01: LK8 (Link 8) - 8-bit mode.
     - 2b10: LK16 (Link 16) - 16-bit mode.
@@ -75,9 +71,9 @@ Accumulators can be linked into wider configurations (2×8-bit or 1×16-bit), wh
 
 | Bit | Name     | Default | Description                                                                                           |
 |-----|----------|---------|-------------------------------------------------------------------------------------------------------|
-|  7  | CI       |    0    | Carry-in enable. When 0, arithmetic ignores C as input. When 1, arithmetic uses C as carry/borrow-in. |
-|  6  | BW       |    0    | Branch immediate width: 0=imm4, 1=imm8                                                                |
-|  5  | BRS      |    0    | Branch relative scale: 0=×1, 1=×4 (<<2)                                                               |
+|  7  | RSV      |    0    | Reserved for future use or extensions.                                                                |
+|  6  | RSV      |    0    | Reserved for future use or extensions.                                                                |
+|  5  | CI       |    0    | Carry-in enable. When 0, arithmetic ignores C as input. When 1, arithmetic uses C as carry/borrow-in. |
 |  4  | IE       |    0    | Interrupt enable                                                                                      |
 |  3  | IMM      |    0    | When set, selected ALU opcodes use an embedded immediate instead of RS0 as second operand.            |
 |  2  | SIGN     |    0    | Signed arithmetic mode                                                                                |
@@ -95,9 +91,9 @@ The following table lists the architecture instructions:
 | 1101 |OR        |XOR       | OR / XOR                                             |
 | 0011 |SHL       |SHR       | Shift Left / Right                                   |
 | 1011 |BTST      |TST       | Bit Test / Test                                      |
-| 0111 |BZ        |BC        | Branch on Zero flag / Branch on Carry flag           |
+| 0111 |BRC       |CMP       | Branch Relative Conditional / Compare                |
 | 1111 |JAL       |JMP       | Jump and Link / Jump                                 |
-| 0010 |CFG       |CMP       | Load Configuration / Compare                         |
+| 0010 |CFG       |**RSV**   | Load Configuration / Reserved for extensions         |
 | 0110 |RACC      |RRS       | Rotate Accumulator/ Rotate Register Source 0         |
 | 1010 |RSS       |RSA       | Rotate Stack Source/Address                          |
 | 1110 |SS        |SA        | Swap Accumulator with Source/Address                 |
@@ -124,16 +120,16 @@ Since ACC/RS0 rotation would became useless at LK16 mode, in LK16 mode this inst
 
 MISA-O uses **nibble-based encoding** with variable-length instructions:
 
-|      Type      |          Format         | Size |                 Example                  |
-|----------------|-------------------------|------|------------------------------------------|
-| Simple         | 4-bit opcode            | 0.5B¹| `ADD`, `INC`, `JAL`                      |
-| Extended       | XOP + opcode            | 1B   | `XOP; SUB`                               |
-| Immediate      | (XOP)opcode + W-bit imm | 1-3B | `ADD #value` (W-dependent) (IMM=enabled) |
-| Load immediate | 4-bit + W-bit imm       |1-2.5B| `LDi #value` (W-dependent)               |
-| CFG Update     | 4-bit + 8-bit imm       | 1.5B | `CFG #imm` (paired)                      |
-| CSR access     | 4-bit + 4-bit index     | 1B   | `CSRLD #5`                               |
-| Memory         | 4-bit + 4-bit func      | 1B   | `XMEM #0b1010`                         |
-| Branch         | 4-bit + imm4/8          | 1-2B | `BZ #target` (BW-dependent)              |
+|      Type      |          Format           | Size |                 Example                  |
+|----------------|---------------------------|------|------------------------------------------|
+| Simple         | 4-bit opcode              | 0.5B¹| `ADD`, `INC`, `JAL`                      |
+| Extended       | XOP + opcode              | 1B   | `XOP; SUB`                               |
+| Immediate      | (XOP)opcode + W-bit imm   | 1-3B | `ADD #value` (W-dependent) (IMM=enabled) |
+| Load immediate | 4-bit + W-bit imm         |1-2.5B| `LDi #value` (W-dependent)               |
+| CFG Update     | 4-bit + 8-bit imm         | 1.5B | `CFG #imm` (paired)                      |
+| CSR access     | 4-bit + 4-bit index       | 1B   | `CSRLD #5`                               |
+| Memory         | 4-bit + 4-bit func        | 1B   | `XMEM #0b1010`                         |
+| Branch         | 4-bit + 4-bit cond + imm8 | 2B   | `BRC #func #target`                      |
 
 ¹ *Two 4-bit instructions pack into a single byte*
 
@@ -181,17 +177,15 @@ MISA-O uses **nibble-based encoding** with variable-length instructions:
   - `Z = (tmp == 0)`
   - `N = MSB(tmp)`
   - `V = signed overflow on subtraction`
-- **Branches** (PC-relative): If (cond): **PC ← PC_next + ( *sign_extend*(BW ? imm8 : imm4) << (BRS ? 2 : 0) )**; Else: **PC ← PC_next**; *flags unchanged*.
-  - **BZ #imm**: Branch on Z flag.
-  - **BC #imm**: Branch on C flag.
-  - **BTST/BTSTI**:
-    - If `IMM = 0`: `idx = RS0[3:0]`.
-    - If `IMM = 1`: `idx = imm4` (low 4 bits of the immediate).
-    - Then: tests bit `ACC[idx]`; sets `C = ACC[idx]`; `ACC` not written. Updates Z to reflect whether the tested bit is zero.
-  - **TST/TSTI**:
-    - If `IMM = 0`: `mask = RS0`.
-    - If `IMM = 1`: `mask = imm_W` (immediate zero-extended to W bits).
-    - Then: `tmp = ACC & mask`; sets `C = 1` if `tmp != 0`, else `C = 0`; `ACC` not written (limited by current link width); updates `Z`/`N` from `tmp`, does not update `V`.
+- **BRC #cond #imm8** (PC-relative): Branch If (cond): **PC ← PC_next + sign_extend(imm8); Else: **PC ← PC_next**; *Condition codes are evaluated against flags (C, Z, N, V); flags unchanged*.
+- **BTST/BTSTI**:
+  - If `IMM = 0`: `idx = RS0[3:0]`.
+  - If `IMM = 1`: `idx = imm4` (low 4 bits of the immediate).
+  - Then: tests bit `ACC[idx]`; sets `C = ACC[idx]`; `ACC` not written. Updates Z to reflect whether the tested bit is zero.
+- **TST/TSTI**:
+  - If `IMM = 0`: `mask = RS0`.
+  - If `IMM = 1`: `mask = imm_W` (immediate zero-extended to W bits).
+  - Then: `tmp = ACC & mask`; sets `C = 1` if `tmp != 0`, else `C = 0`; `ACC` not written (limited by current link width); updates `Z`/`N` from `tmp`, does not update `V`.
 - **XOP**: Executes next instruction as Extended Operation.
 - **XMEM #f**: Extended Memory Operations (opcode 1100 + 4-bit function):
   - Function:
@@ -287,11 +281,82 @@ For **subtraction**, the carry flag represents borrow. When `CI = 1`, a `SUB` in
 
 Multi-precision operations are typically implemented by iterating over words from least significant to most significant, using `XMEM` loads/stores and standard arithmetic instructions, without requiring dedicated wide arithmetic opcodes.
 
-### Branch:
+---
 
-- BW/BRS are global (from CFG). Keep them constant within a function.
-- With imm4 and large scaling (e.g., <<2), targets should be aligned accordingly to avoid padding.
-- Taking a branch does not modify flags.
+## Branch Instructions
+
+### `BRC` - Branch Relative Conditional
+
+`BRC` performs a **PC-relative conditional branch** based on the current architectural flags **C, Z, N, V**.
+The branch condition is selected via a **4-bit condition code (`cond`)**, and the target offset is provided as an **8-bit signed immediate (`imm8`)**.
+
+This design generalizes all branch behavior into a **single instruction**, avoiding opcode proliferation while providing a complete and expressive set of control-flow conditions.
+
+### Encoding
+
+```
+BRC  #cond, #imm8
+```
+
+* **`cond`** — 4-bit condition code
+* **`imm8`** — signed 8-bit immediate (PC-relative offset)
+
+**Total size:** 16 bits
+
+The branch target is computed as:
+
+```
+PC ← PC_next + sign_extend(imm8)
+```
+
+The branch is taken **iff** the condition specified by `cond` evaluates to true.
+
+### Condition Codes
+
+The following condition codes are defined.
+All conditions are evaluated using the current architectural flags as produced by the most recent ALU or compare operation.
+
+| cond (bin) | Mnemonic | Condition            | Notes                   |
+| ---------- | -------- | -------------------- | ----------------------- |
+|     `0000` | **AL**   | Always               | Unconditional branch    |
+|     `0001` | **EQ**   | Z == 1               | Equal / zero            |
+|     `0010` | **NE**   | Z == 0               | Not equal / non-zero    |
+|     `0011` | **CS**   | C == 1               | Carry set / borrow      |
+|     `0100` | **CC**   | C == 0               | Carry clear / no borrow |
+|     `0101` | **MI**   | N == 1               | Negative (signed)       |
+|     `0110` | **PL**   | N == 0               | Positive or zero        |
+|     `0111` | **VS**   | V == 1               | Signed overflow         |
+|     `1000` | **VC**   | V == 0               | No signed overflow      |
+|     `1001` | **HI**   | (C == 0) && (Z == 0) | Unsigned greater-than   |
+|     `1010` | **LS**   | (C == 1) \|\| (Z == 1) | Unsigned less-or-equal  |
+|     `1011` | **GE**   | N == V               | Signed greater-or-equal |
+|     `1100` | **LT**   | N != V               | Signed less-than        |
+|     `1101` | **GT**   | (Z == 0) && (N == V) | Signed greater-than     |
+|     `1110` | **LE**   | (Z == 1) \|\| (N != V) | Signed less-or-equal    |
+|     `1111` | —        | Reserved             | Must not be used        |
+
+### Flag Semantics
+
+The interpretation of flags follows the architectural definitions of MISA-O:
+
+* **Z (Zero)** — set if the computed result equals zero.
+* **N (Negative)** — reflects the most significant bit of the result (according to active width `W`).
+* **C (Carry/Borrow)**:
+
+  * For **ADD / INC**: `C = carry-out`
+  * For **SUB / DEC / CMP**: `C = borrow-out`
+* **V (Overflow)** — indicates signed overflow on addition or subtraction.
+
+Unsigned comparisons (`HI`, `LS`) rely on the borrow semantics of `C` after subtraction or comparison.
+
+Signed comparisons (`GE`, `LT`, `GT`, `LE`) rely on the standard two’s-complement relationship between `N` and `V`.
+
+### Notes
+
+* `BRC` **does not modify any flags**.
+* Branch immediates are always **PC-relative** and sign-extended.
+* The `AL` condition (`cond = 0000`) provides a canonical **unconditional branch** without requiring a dedicated opcode.
+* Condition code `1111` is reserved for future use and must not be emitted by compliant toolchains.
 
 ---
 
