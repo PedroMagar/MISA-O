@@ -106,10 +106,10 @@ module tb_misao;
         memory[3]  = {4'h5, LDI};   // ACC=5
         memory[4]  = {NOP, NOP};    // NOP sanity
         memory[5]  = {4'h0, LDI};   // ACC=0
-        memory[6]  = {4'h2, BEQZ};  // BEQZ +2 (taken)
+        memory[6]  = {4'h4, BEQZ};  // BEQZ +4 nibbles (taken)
         memory[7]  = {4'hF, LDI};   // skipped
         memory[8]  = {4'h1, LDI};   // target ACC=1
-        memory[9]  = {4'h2, BEQZ};  // BEQZ +2 (not taken)
+        memory[9]  = {4'h4, BEQZ};  // BEQZ +4 nibbles (not taken)
         memory[10] = {4'h2, LDI};   // ACC=2
 
         // Phase 2: BC (imm4) with carry clear/set
@@ -135,14 +135,14 @@ module tb_misao;
         memory[28] = {4'h0, LDI};   // ACC=0
         memory[29] = {NOP, SHL};    // SHL -> C=0
         memory[30] = {BC, XOP};     // XOP BC imm8 (not taken)
-        memory[31] = {4'h0, 4'h2};  // imm8 low=2, high=0
+        memory[31] = {4'h0, 4'h4};  // imm8 low=4, high=0 (nibble offset)
         memory[32] = {4'h7, LDI};   // ACC=7
 
         // Phase 4: BRS=1 scaling (imm4)
         memory[33] = {4'h4, CFG};   // CFG 0x24 (UL, BW=imm4, BRS=1)
         memory[34] = {NOP, 4'h2};
         memory[35] = {4'h0, LDI};   // ACC=0
-        memory[36] = {4'h1, BEQZ};  // BEQZ +1 (scaled <<2)
+        memory[36] = {4'h2, BEQZ};  // BEQZ +2 nibbles (scaled <<2)
         memory[37] = {4'hF, LDI};   // skipped
         memory[38] = {NOP, NOP};    // pad
         memory[39] = {4'h9, LDI};   // target ACC=9
@@ -173,116 +173,88 @@ module tb_misao;
         memory[62] = {NOP, NOP};
         memory[63] = {NOP, NOP};    // JMP target entry
 
-        // Phase 6: negative offsets + mixed control-flow (BEQz, BC, JMP, JAL) + link-to-ACC validation
+        // Phase 6: Negative control-flow (BEQZ, BC, JMP, JAL) — machine-oriented
         // Enter LK16
         memory[64]  = {4'h6, CFG};   // CFG 0x06 (LK16, BW=imm4)
         memory[65]  = {NOP, 4'h0};
 
-        // --- BEQz forward ---
+        // --- Test 1: BEQZ negative (taken once) ---
         memory[66]  = {4'h0, LDI};   // LDI 0x0000
         memory[67]  = {4'h0, 4'h0};
         memory[68]  = {NOP, 4'h0};
-        memory[69]  = {4'h3, BEQZ};  // BEQz +3 -> @73
-        memory[70]  = {4'hA, LDI};   // LDI 0x000A (skipped)
+        memory[69]  = {4'h5, BEQZ};  // BEQZ +5 -> @74 (enter test, skip taken block)
+
+        memory[70]  = {4'h2, LDI};   // LDI 0x0002 (marker)
         memory[71]  = {4'h0, 4'h0};
         memory[72]  = {NOP, 4'h0};
-        memory[73]  = {4'h1, LDI};   // LDI 0x0001 (forward marker)
-        memory[74]  = {4'h0, 4'h0};
-        memory[75]  = {NOP, 4'h0};
+        memory[73]  = {NOP, SHR};    // SHR (updates Z)
 
-        // --- BEQz backward (one-shot) ---
-        memory[76]  = {4'h0, LDI};   // LDI 0x0000 (Z=1)
-        memory[77]  = {4'h0, 4'h0};
-        memory[78]  = {NOP, 4'h0};
+        memory[74]  = {4'hC, BEQZ};  // BEQZ -4 -> @70 (taken once, then fallthrough)
 
-        // Want to JMP to byte @87 opcode nibble => PC = 2*87 = 174 = 0x00AE
-        memory[79]  = {4'hE, LDI};   // LDI 0x00AE
-        memory[80]  = {4'h0, 4'hA};
-        memory[81]  = {NOP, 4'h0};
-        memory[82]  = {SA , XOP};    // RA0=0x00AE
-        memory[83]  = {JMP, XOP};    // JMP -> @87
+        // --- Test 2: BC negative (taken once) ---
+        memory[75]  = {NOP, SHR};    // SHR (C=1, ACC=0) + updates Z
+        memory[76]  = {4'h6, BEQZ};  // BEQZ +6 -> @82 (enter test, skip taken block)
 
-        memory[84]  = {4'h2, LDI};   // LDI 0x0002 (backward marker)
-        memory[85]  = {4'h0, 4'h0};
-        memory[86]  = {NOP, 4'h0};
-        memory[87]  = {4'hD, BEQZ};  // BEQz -4 (0xC) -> @84 (taken once)
+        memory[77]  = {4'h0, LDI};   // LDI 0x4000 (marker)
+        memory[78]  = {4'h0, 4'h0};
+        memory[79]  = {NOP, 4'h4};
+        memory[80]  = {NOP, SHL};    // SHL (clears C=0 for anti-loop, ACC becomes 0x8000)
 
-        // --- BC backward (one-shot, clears C in marker) ---
-        memory[88]  = {4'h8, LDI};   // LDI 0x8000
-        memory[89]  = {4'h0, 4'h0};
-        memory[90]  = {NOP, 4'h0};
-        memory[91]  = {NOP, SHL};    // SHL -> C=1, ACC=0
+        memory[81]  = {NOP, NOP};    // pad
+        memory[82]  = {BC, XOP};     // XOP BC (branch backward once when C=1)
+        memory[83]  = {4'hB, NOP};   // imm4=-5 (to @77), safe filler
 
-        // Want to JMP to byte @101 (XOP+BC lives at 101) => PC = 2*101 = 202 = 0x00CA
-        memory[92]  = {4'hA, LDI};   // LDI 0x00CA
-        memory[93]  = {4'h0, 4'hC};
-        memory[94]  = {NOP, 4'h0};
-        memory[95]  = {SA , XOP};    // RA0=0x00CA
-        memory[96]  = {JMP, XOP};    // JMP -> @101
+        // --- Test 3: JMP negative (absolute backward), entered via BC ---
+        memory[84]  = {NOP, SHL};    // SHL (ACC=0x8000 -> C=1, ACC=0)
 
-        memory[97]  = {4'h0, LDI};   // LDI 0x0000 (carry-clear marker entry)
-        memory[98]  = {4'h0, 4'h0};
+        // RA0 = PC(test_3_jmp_taken) = 2*91 = 0x00B6
+        memory[85]  = {4'h6, LDI};   // LDI 0x00B6
+        memory[86]  = {4'h0, 4'hB};
+        memory[87]  = {NOP, 4'h0};
+        memory[88]  = {SA , XOP};    // SA -> RA0=0x00B6
+
+        memory[89]  = {BC, XOP};     // enter test_3_jmp (forward)
+        memory[90]  = {4'h7, NOP};   // imm4=+7 -> @96
+
+        // test_3_jmp_taken @91
+        memory[91]  = {4'h3, LDI};   // LDI 0x0003 (landing marker)
+        memory[92]  = {4'h0, 4'h0};
+        memory[93]  = {NOP, 4'h0};
+
+        memory[94]  = {BC, XOP};     // "exit" via BC (uses C=1)
+        memory[95]  = {4'h3, NOP};   // imm4=+3 -> @97
+
+        // test_3_jmp @96
+        memory[96]  = {JMP, XOP};    // JMP -> PC=RA0 (back to @91)
+
+        // test_3_jmp_end @97
+
+        // --- Test 4: JAL negative + link validation, entered via BC ---
+        // RA0 = PC(test_4_jal_taken) = 2*103 = 0x00CE
+        memory[97]  = {4'hE, LDI};   // LDI 0x00CE
+        memory[98]  = {4'h0, 4'hC};
         memory[99]  = {NOP, 4'h0};
-        memory[100] = {NOP, SHL};    // SHL -> C=0
+        memory[100] = {SA , XOP};    // SA -> RA0=0x00CE
 
-        memory[101] = {BC, XOP};     // XOP BC
-        memory[102] = {4'hB, LDI};   // imm4=-5 (0xB) -> @97 (taken once when C=1), then not taken
-        memory[103] = {NOP, NOP};
-        memory[104] = {NOP, NOP};
+        memory[101] = {BC, XOP};     // enter test_4_jal (forward)
+        memory[102] = {4'h6, NOP};   // imm4=+6 -> @108
 
-        memory[105] = {4'h4, LDI};   // LDI 0x0004 (post-BC marker)
-        memory[106] = {4'h0, 4'h0};
-        memory[107] = {NOP, 4'h0};
+        // test_4_jal_taken @103
+        memory[103] = {4'h4, LDI};   // LDI 0x0004 (marker)
+        memory[104] = {4'h0, 4'h0};
+        memory[105] = {NOP, 4'h0};
 
-        // --- JMP backward absolute + exit forward ---
-        // IMPORTANT: target must land on the marker LDI opcode, not inside the address-setup bytes.
-        // Backward landing marker is at byte @113 => PC = 2*113 = 226 = 0x00E2
-        memory[108] = {4'h2, LDI};   // LDI 0x00E2
-        memory[109] = {4'h0, 4'hE};
-        memory[110] = {NOP, 4'h0};
-        memory[111] = {SA , XOP};    // RA0=0x00E3
-        memory[112] = {JMP, XOP};    // JMP -> @113 (backward)
+        memory[106] = {BC, XOP};     // exit via BC (uses C=1)
+        memory[107] = {4'h2, NOP};   // imm4=+2 -> @109
 
-        memory[113] = {4'h3, LDI};   // LDI 0x0003 (JMP landing marker)
-        memory[114] = {4'h0, 4'h0};
-        memory[115] = {NOP, 4'h0};
+        // test_4_jal @108
+        memory[108] = {NOP, JAL};    // JAL -> PC=RA0, RA1=link
 
-        // Exit/continue marker is at byte @121 => PC = 2*121 = 242 = 0x00F2
-        memory[116] = {4'h2, LDI};   // LDI 0x00F2
-        memory[117] = {4'h0, 4'hF};
-        memory[118] = {NOP, 4'h0};
-        memory[119] = {SA , XOP};    // RA0=0x00F3
-        memory[120] = {JMP, XOP};    // JMP -> @121
-
-        memory[121] = {4'h5, LDI};   // LDI 0x0005 (post-JMP marker)
-        memory[122] = {4'h0, 4'h0};
-        memory[123] = {NOP, 4'h0};
-
-        // --- JAL backward + link-to-ACC check (target is behind) ---
-        // Target @124: (low nibble XOP, high nibble RSA/SA etc)
-        memory[124] = {RSA, XOP};    // RSA
-        memory[125] = {SA , XOP};    // SA -> ACC = RA1 (via swap)
-
-        // Continue @144 => PC = 2*144 = 288 = 0x0120
-        memory[126] = {4'h0, LDI};   // LDI 0x0120
-        memory[127] = {4'h1, 4'h2};
-        memory[128] = {NOP, 4'h0};
-        memory[129] = {SA , XOP};    // RA0=0x0120
-        memory[130] = {JMP, XOP};    // JMP -> @144
-
-        // Mainline sets RA0=@124 and JAL backward:
-        // Want to JAL to byte @124 opcode nibble => PC = 2*124 = 248 = 0x00F8
-        memory[131] = {4'h8, LDI};   // LDI 0x00F8
-        memory[132] = {4'h0, 4'hF};
-        memory[133] = {NOP, 4'h0};
-        memory[134] = {SA , XOP};    // RA0=0x00F8
-        memory[135] = {NOP, JAL};    // JAL -> @124, RA1=link
-        memory[136] = {NOP, INC};    // should be skipped if JAL works
-
-        // Continue @144:
-        memory[144] = {4'h6, LDI};   // LDI 0x0006 (final marker)
-        memory[145] = {4'h0, 4'h0};
-        memory[146] = {NOP, 4'h0};
+        // test_4_jal_end @109
+        memory[109] = {NOP, NOP};    // checkpoint (validate marker before compute)
+        memory[110] = {RSA, XOP};    // RSA
+        memory[111] = {SA , XOP};    // SA -> ACC = RA1 (link)
+        memory[112] = {NOP, NOP};    // pad/checkpoint
 
         // ================================================================
         // Execution & Checks
@@ -319,21 +291,13 @@ module tb_misao;
         validate(52, 1, 16'h005D, 1'b0); // RA1 link via RSA+SA
         validate(63, 1, 16'h0000, 1'b0); // JMP target entry (ACC unchanged)
 
-        // Phase 6 (negative offsets + link validation)
-        // (extra entry-point validations to avoid depending on LDI timing)
-        validate(73 , 4, 16'h0001, 1'b0); // BEQz forward taken -> marker 0x0001 (after LDI completes)
-        validate(76 , 0, 16'h0001, 1'b0); // Enter next block with ACC=0x0001 (proves forward branch landed)
-        validate(84 , 4, 16'h0002, 1'b0); // LDi 0x0002
-        validate(88 , 0, 16'h0002, 1'b0); // Enter @88 with ACC=0x0002 (proves backward BEQz path executed)
-        validate(105, 1, 16'h0004, 1'b0); // Post-BC marker LDI 0x0004
-        validate(108, 0, 16'h0004, 1'b0); // Enter next stage with ACC=0x0004 (BC resolved, no timing dependency)
-        validate(115, 1, 16'h0003, 1'b0); // JMP backward: landing marker LDI 0x0003
-        validate(116, 0, 16'h0003, 1'b0); // Enter exit-setup with ACC=0x0003 (proves JMP landed before overwrite)
-        validate(121, 1, 16'h0005, 1'b0); // Post-JMP marker LDI 0x0005
-        validate(124, 0, 16'h0005, 1'b0); // Enter JAL-target prelude with ACC=0x0005 (sequential flow intact)
-        validate(125, 1, 16'h010F, 1'b0); // JAL backward: link moved into ACC via RSA+SA
-        validate(126, 0, 16'h010F, 1'b0); // Enter @126 before LDI overwrites ACC (link check without timing)
-        validate(144, 1, 16'h0006, 1'b0); // Final marker after returning via JMP
+        // Phase 6 (negative control-flow)
+        // Philosophy: validate at arrival (cycle 0) before the next instruction overwrites ACC.
+        validate(75,  0, 16'h0001, 1'b0); // Test 1 completed: marker path executed (after SHR, ACC=1)
+        validate(84,  0, 16'h8000, 1'b0); // Test 2 completed: after LDI 0x4000 + SHL, ACC=0x8000, C=0
+        validate(97,  0, 16'h0003, 1'b1); // Test 3 completed: JMP landed on marker (ACC=3) and exited via BC
+        validate(109, 0, 16'h0004, 1'b1); // Test 4 marker reached (ACC=4) before link is moved into ACC
+        validate(112, 0, 16'h00D9, 1'b1); // Link check: JAL at byte[108] low nibble => link = 2*108 + 1 = 0x00D9
 
 
         $display("CONTROL TEST DONE");
