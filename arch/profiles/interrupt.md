@@ -66,7 +66,7 @@ The interrupt frame is intentionally minimal; software is expected to save only 
 ### Instructions:
 | Mode |Binary| Type      | Name     | Description                                |
 |------|------|-----------|----------|--------------------------------------------|
-| ALL  | 1100 |*Extended* |**RETI**  | Return from Interrupt                      |
+| ALL  | 0100 |*Extended* |**RETI**  | Return from Interrupt                      |
 | ALL  | 1000 |*Extended* |**SWI**   | Software Interrupt                         |
 | ALL  | 0000 |*Extended* |**WFI**   | Wait-For-Interrupt                         |
 

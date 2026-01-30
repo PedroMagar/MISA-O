@@ -139,7 +139,7 @@ MISA-O uses **nibble-based encoding** with variable-length instructions:
 - PC addresses instruction nibbles directly.
 - Simple operations (ADD, SS, etc) can pair in 1 byte.
 - Complex operations (CFG, LDi) use 2-3 bytes.
-- When `CFG.IMM` is enable, relevant instructions (ADD, SUB, AND, OR, XOR, TST) will increase by W-size to accomodate such immediate (BTST will always increase by 4-bit because it's enough to accomodate the 16 positions of the register).
+- When `CFG.IMM` is enabled, relevant instructions (ADD, SUB, AND, OR, XOR, TST) increase by W-size to accommodate the immediate operand (`BTST` always uses a 4-bit immediate, since it is sufficient to address the 16 positions of the register).
 
 ---
 
@@ -165,7 +165,8 @@ MISA-O uses **nibble-based encoding** with variable-length instructions:
 - **INC/DEC**: Increment/Decrement ACC by 1; updates `C` with carry-out/borrow; carry-in is always treated as 0.
 - **SHL/SHR**: Shift ACC Left/Right by 1 bit; the outgoing bit goes to Carry, and the vacated side is filled with 0. Updates `C` with the shifted-out bit and updates `Z`/`N` from the result. Does not update `V`.
 - **RACC/RRS**: Rotate Accumulator / Register Source - It rotates ACC/RS0 by W bits (4/8), wrapping around; in LK16, the RACC/RRS opcode encoding is repurposed as Special Instructions (SI).
-- **RSS/RSA**: Treat RS/RA as a stack and rotate it. Any implementation that extends these instructions to additional registers constitutes a non-standard extension and may break binary compatibility.
+- **RSS**: Swap `RS0` ↔ `RS1`; ***flags unchanged***.
+- **RSA**: Swap `RA0` ↔ `RA1`; ***flags unchanged***.
 - **SS**:  Swaps the contents of **ACC** *with* source operand register 0 (**RS0**), respecting the active **W** (word-size) configuration: `ACC ↔ RS0 (W-bits)`.
 - **SA**:  Swaps the full contents of **ACC** *with* address register 0 (**RA0**) (full 16-bit), ignoring the **W** size configuration: `ACC ↔ RA0 (16-bits)`.
 - **JAL/JMP**: All jumps will be based on register RA0, but linking would be saved on RA1.
