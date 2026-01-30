@@ -91,14 +91,14 @@ The following table lists the architecture instructions:
 | 1101 |OR        |XOR       | OR / XOR                                             |
 | 0011 |SHL       |SHR       | Shift Left / Right                                   |
 | 1011 |BTST      |TST       | Bit Test / Test                                      |
-| 0111 |BRC       |CMP       | Branch Relative Conditional / Compare                |
+| 0111 |**BRC**   |CMP       | Branch Relative Conditional / Compare                |
 | 1111 |JAL       |JMP       | Jump and Link / Jump                                 |
 | 0010 |CFG       |**RSV**   | Load Configuration / Reserved for extensions         |
 | 0110 |RACC      |RRS       | Rotate Accumulator/ Rotate Register Source 0         |
 | 1010 |RSS       |RSA       | Rotate Stack Source/Address                          |
 | 1110 |SS        |SA        | Swap Accumulator with Source/Address                 |
 | 0100 |LDi       |**RSV**   | Load Immediate / Reserved for extensions             |
-| 1100 |XMEM      |**RSV**   | Extended Memory Operations / Reserved for extensions |
+| 1100 |XMEM      |**MCPY**  | Extended Memory Operations / Reserved for extensions |
 | 1000 |XOP       |**RSV**   | Extended Operations / Reserved for extensions        |
 | 0000 |NOP       |**RSV**   | No Operation / Reserved for extensions               |
 
@@ -177,7 +177,7 @@ MISA-O uses **nibble-based encoding** with variable-length instructions:
   - `Z = (tmp == 0)`
   - `N = MSB(tmp)`
   - `V = signed overflow on subtraction`
-- **BRC #cond #imm8** (PC-relative): Branch If (cond): **PC ← PC_next + sign_extend(imm8); Else: **PC ← PC_next**; *Condition codes are evaluated against flags (C, Z, N, V); flags unchanged*.
+- **BRC #cond #imm8** (PC-relative): Branch If ***cond***: `PC ← PC_next + sign_extend(imm8)`; Else: **PC ← PC_next**; *Condition codes are evaluated against flags (C, Z, N, V)*; ***flags unchanged***.
 - **BTST/BTSTI**:
   - If `IMM = 0`: `idx = RS0[3:0]`.
   - If `IMM = 1`: `idx = imm4` (low 4 bits of the immediate).
@@ -208,6 +208,7 @@ MISA-O uses **nibble-based encoding** with variable-length instructions:
       - DIR=0 (Increment): Performs Post-Increment (Access [addr], then addr ← addr + stride).
       - DIR=1 (Decrement): Performs Pre-Decrement (addr ← addr - stride, then Access [addr]).
     - Flags: **unchanged**.
+- **MCPY**: Copies **|RS1| bytes** from `[RA0]` to `[RA1]`, counter is **signed `RS1`** and always progresses toward zero; ***flags unchanged***.
 - **CSRLD #imm**: Loads CSR into ACC (more details on CSR section).
 - **CSRST #imm**: Write ACC into CSR (more details on CSR section).
 
@@ -357,6 +358,91 @@ Signed comparisons (`GE`, `LT`, `GT`, `LE`) rely on the standard two’s-complem
 * Branch immediates are always **PC-relative** and sign-extended.
 * The `AL` condition (`cond = 0000`) provides a canonical **unconditional branch** without requiring a dedicated opcode.
 * Condition code `1111` is reserved for future use and must not be emitted by compliant toolchains.
+
+---
+
+## Block Memory Copy — `MCPY`
+
+### `MCPY` — Block Memory Copy (Extended XMEM)
+
+`MCPY` is a block memory copy operation implemented as an **extended XMEM instruction**, invoked through the `XOP` prefix.
+
+This instruction performs a repeated byte-wise copy from a source address to a destination address, using a signed counter to control both **length** and **direction**, without requiring explicit software loops.
+
+
+### Encoding
+
+`MCPY` reuses the base `XMEM` opcode when preceded by `XOP`.
+No additional function field is currently defined.
+
+### Registers Used
+
+| Register | Role                       |
+| -------- | -------------------------- |
+| `RA0`    | Source address             |
+| `RA1`    | Destination address        |
+| `RS1`    | Signed 16-bit byte counter |
+
+### Semantics
+
+`MCPY` copies **|RS1| bytes** from `[RA0]` to `[RA1]`.
+
+The copy direction is determined by the **sign of `RS1`** at execution time:
+
+* **`RS1 > 0`** — *Forward copy*
+
+  * Read from `[RA0]`, write to `[RA1]`
+  * Post-increment `RA0` and `RA1`
+  * `RS1 ← RS1 − 1`
+
+* **`RS1 < 0`** — *Backward copy*
+
+  * Pre-decrement `RA0` and `RA1`
+  * Read from `[RA0]`, write to `[RA1]`
+  * `RS1 ← RS1 + 1`
+
+* **`RS1 == 0`** — No operation is performed
+
+The operation completes when `RS1` reaches zero.
+
+### Pseudocode
+
+```c
+if (RS1 > 0) {
+    while (RS1 != 0) {
+        *RA1 = *RA0;
+        RA0++;
+        RA1++;
+        RS1--;
+    }
+} else if (RS1 < 0) {
+    while (RS1 != 0) {
+        RA0--;
+        RA1--;
+        *RA1 = *RA0;
+        RS1++;
+    }
+}
+```
+
+### Data Width and Addressing
+
+* `MCPY` always operates on **bytes**, independent of the current link mode (`W`).
+* Address registers (`RA0`, `RA1`) are updated by **±1 byte** per iteration.
+* The signedness of `RS1` is evaluated directly from its most significant bit and is **independent of `CFG.SIGN`**.
+
+### Flags and Side Effects
+
+* **Flags:** unchanged
+* **ACC:** unchanged
+
+No architectural flags are read or modified by `MCPY`.
+
+### Notes
+
+* `MCPY` is restartable: address and counter registers are updated incrementally and always reflect completed progress.
+* Software may implement `memmove` semantics by selecting the appropriate sign for `RS1` based on overlap.
+* Other block memory operations (e.g., fill or compare) are intentionally not defined at this level and must be implemented in software.
 
 ---
 
