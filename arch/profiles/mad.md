@@ -25,8 +25,8 @@ In SPE mode, `RACC` and `RRS` opcodes are **reinterpreted as rotate operations (
   * Purpose: Shift multiplicand to next 8-bit lane for iterative multiply
   * Example: `0xABCD → 0xCDAB`
 
-* **RRS** (opcode `0110` extended → `XOP; 0010`): Rotates `RS1` **left by 8 bits** (optional, rarely needed)
-  * Semantics: `RS1 ← rotateLeft8(RS1)`
+* **RRS** (opcode `0110` extended → `XOP; 0010`): Rotates `RS0` **left by 8 bits** (optional, rarely needed)
+  * Semantics: `RS0 ← rotateLeft8(RS0)`
   * Format: `XOP; 0010` (1B instruction)
   * Purpose: Shift multiplier if needed (usually not required with lane selection)
   * Note: Reserved for future use; most algorithms use LANE selection instead
@@ -77,8 +77,8 @@ In particular:
 
 | Mode |Binary | Type       | Name     | Description                                       |
 |------|-------|------------|----------|---------------------------------------------------|
-| SPE  | 0110  | *Default*  | **RACC** | Rotate RS0 left 8 bits (multiplicand rotation)    |
-| SPE  | 0110  | *Extended* | **RRS**  | Rotate RS1 left 8 bits                            |
+| SPE  | 0110  | *Default*  | **RACC** | Rotate ACC left 8 bits (multiplicand rotation)    |
+| SPE  | 0110  | *Extended* | **RRS**  | Rotate RS0 left 8 bits                            |
 | SPE  | 0100  | *Extended* | **MAD**  | Multiply-Add with lane selection                  |
 | SPE  | 1000  | *Extended* | **MAX**  | Maximum value clamp                               |
 | SPE  | 0000  | *Extended* | **MIN**  | Minimum value clamp                               |
@@ -97,14 +97,14 @@ In particular:
   * **Carry flag** (`C`) = carry-out of 16-bit accumulation (before shift/saturation)
   * **Overflow**: Implementation-defined status bits may be exposed via `CORECFG` bits (for BUSY, SAT flags, etc)
 
-- **RACC**: `RS0 ← rotateLeft8(RS0)`
-  * Rotates RS0 left by 8 bits, wrapping around
+- **RACC**: `ACC ← rotateLeft8(ACC)`
+  * Rotates ACC left by 8 bits, wrapping around
   * Semantics identical to LK8 `RACC` instruction
   * Enables multi-byte iterative multiplication
   * Example: After RACC, next byte of RS0 is available in `RS0[7:0]`
 
-- **RRS** (via `XOP; 0010`): `RS1 ← rotateLeft8(RS1)`
-  * Rotates RS1 left by 8 bits (rarely used in MAD algorithms)
+- **RRS** (via `XOP; 0010`): `RS0 ← rotateLeft8(RS0)`
+  * Rotates RS0 left by 8 bits (rarely used in MAD algorithms)
   * Optional instruction; implementations may omit
   * Useful for multi-lane multipliers; usually LANE selection is sufficient
 
