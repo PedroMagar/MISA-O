@@ -20,8 +20,8 @@ All control is encoded **per-instruction** via the function nibble, while observ
 
 In SPE mode, `RACC` and `RRS` opcodes are **reinterpreted as rotate operations (LK8)** instead of their LK16 semantics (CSRLD/CSRST):
 
-* **RACC** (opcode `0110` default): Rotates `RS0` **left by 8 bits**
-  * Semantics: `RS0 ← rotateLeft8(RS0)`
+* **RACC** (opcode `0110` default): Rotates `ACC` **left by 8 bits**
+  * Semantics: `ACC ← rotateLeft8(ACC)`
   * Purpose: Shift multiplicand to next 8-bit lane for iterative multiply
   * Example: `0xABCD → 0xCDAB`
 
