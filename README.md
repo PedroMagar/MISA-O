@@ -1,7 +1,16 @@
 # MISA-O
 
-**My ISA Version 0** is a compact 4-bit MISC accumulator ISA with nibble-based variable-length encoding.
+**My ISA Version 0** (aka, *MISA-O*) is a **nibble-based compact accumulator ISA** designed around a 4-bit encoding philosophy.
+Instructions are organized around 4-bit fields (nibbles), allowing dense instruction packing while still supporting scalable operand widths (UL, LK8 and LK16 modes).
+The architecture aims to explore what a **small but practical accumulator machine** could look like if designed with strict encoding density and implementation simplicity in mind.
 >The specification is under review.
+
+## Design Philosophy
+
+*MISA-O* follows a **nibble-oriented instruction design**.  
+All instructions are structured around 4-bit fields, allowing compact encodings and simple decoding logic.
+Although the instruction encoding is nibble-based, the architecture supports wider execution modes (8-bit and 16-bit) to enable more practical workloads while preserving encoding density.
+This approach keeps the implementation simple and compact while avoiding the strict limitations of traditional 4-bit architectures.
 
 ## Main Docs
 
@@ -37,10 +46,10 @@ Scripts:
 
 # Architecture
 
-MISA-O is a compact 4-bit MISC accumulator ISA featuring variable-length encoding (nibble or byte immediates) and an **XOP** prefix for extensions.
-It uses a unified **XMEM** class for memory access (load/store with optional post-increment).
-The architecture includes one program counter, four 4-bit accumulators, two 16-bit source registers, and two 16-bit address registers.
-Accumulators can be linked into wider configurations (2×8-bit or 1×16-bit), while logic and arithmetic operations act primarily on the active accumulator.
+MISA-O combines **nibble-aligned instruction encoding** with **sliceable accumulator datapaths**, allowing a compact implementation while supporting wider execution modes when required, featuring variable-length instruction encoding (with nibble or byte immediates) and an **XOP** prefix for architectural extensions.
+Memory operations are unified under the **XMEM** class, which provides load/store instructions with optional post-increment addressing.
+The architecture includes one program counter, four accumulators, two 16-bit source registers, and two 16-bit address registers.
+The accumulators are 4-bit wide and can be linked into wider configurations (2x8-bit or 1x16-bit), while arithmetic and logical operations primarily target the active accumulator.
 
 ## Characteristics:
 
@@ -464,7 +473,7 @@ Two implementation profiles are envisaged:
 
 - **Compact**: only the minimal *required* CSR set is implemented. All unimplemented CSRs read as `0` and ignore writes. This keeps area and complexity close to the original MISA-O core.
 
-- **Baseline**: Default implementation to support rich sowtware stack. Software must not rely on any CSR beyond *required* and *baseline* unless the target profile is explicitly known. Baseline is the recommended minimum target for hosted or compiled languages.
+- **Baseline**: Default implementation to support rich software stack. Software must not rely on any CSR beyond *required* and *baseline* unless the target profile is explicitly known. Baseline is the recommended minimum target for hosted or compiled languages.
 
 - **Complete**: All profiles with additional CSRs are implemented for richer interrupt handling, debugging and arithmetic extensions.
 

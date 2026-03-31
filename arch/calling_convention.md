@@ -28,11 +28,11 @@ These registers are **not preserved** across function calls. The caller must sav
 
 These registers **must be preserved** by the callee if modified. The callee saves them in the prologue and restores them in the epilogue.
 
-| Register | Alias | Purpose | Notes |
-|----------|-------|---------|-------|
-| **GPR1** | SP or S0 | Stack Pointer or saved register | See profile note below |
-| **GPR2** | S1 | Saved register | General-purpose callee-saved |
-| **GPR3** | S2 | Saved register | General-purpose callee-saved |
+| Register | Alias | Purpose | CSR Index | Notes |
+|----------|-------|---------|-----------|-------|
+| **GPR1** | SP or S0 | Stack Pointer or saved register | #2 | See profile note below |
+| **GPR2** | S1 | Saved register | #3 | General-purpose callee-saved |
+| **GPR3** | S2 | Saved register | #4 | General-purpose callee-saved |
 
 **Profile Note:**
 - **Extended Profile** (required for C): GPR1-3 are available
@@ -100,8 +100,9 @@ add:
     ; No prologue needed (doesn't call, doesn't use GPRs)
     
     ADD                     ; ACC ← RS0 + RS1
-    
-    JAL                     ; Return (RA1 already has return addr)
+
+    RSA                     ; RA0 ← RA1 (return address)
+    JMP                     ; PC ← return address
 
 ; Prologue: 0 instructions ✅
 ; Epilogue: 0 instructions ✅
@@ -118,28 +119,33 @@ Must save **RA1** (link register) because it will be overwritten by nested JAL:
 complex:
     ; === PROLOGUE ===
     ; Save RA1 (link register)
-    CSRLD #6                ; ACC ← SP (GPR1)
-    SA                      ; RA0 ← SP, ACC ← old_RA0
-    SA                      ; ACC ← RA1, RA0 ← old_RA0
-    XMEM #0b1010            ; [RA0++] ← RA1, RA0++
-    SA                      ; ACC ← RA0 (new SP)
-    CSRST #6                ; SP ← ACC
-    
-    ; Save arguments in GPRs (will be clobbered by calls)
-    CSRST #7                ; GPR2 ← a
-    RSS
-    SS
-    CSRST #8                ; GPR3 ← b
-    RSS
+    CSRLD #2                ; ACC ← SP
+    SA                      ; RA0 ← SP,           ACC ← old_ACC
+    RSA                     ; RA0 ← return_addr,  RA1 ← SP
+    SA                      ; ACC ← return_addr,  RA0 ← old_ACC
+    RSA                     ; RA0 ← SP,           RA1 ← return_addr (restored)
+    XMEM #0b1110            ; pre-dec push: RA0--, [RA0] ← return_addr
+    SA                      ; ACC ← new_SP
+    CSRST #2                ; SP ← new_SP
+
+    ; Save a (RS0) → GPR2
+    SS                      ; ACC ← a, RS0 ← old_ACC
+    CSRST #3                ; GPR2 ← a
+    ; Save b (RS1) → GPR3
+    RSS                     ; RS0 ← b, RS1 ← old_RS0
+    SS                      ; ACC ← b, RS0 ← a
+    CSRST #4                ; GPR3 ← b
     
     ; === BODY ===
     ; Call add(a, b)
-    CSRLD #7
-    SS                      ; RS0 ← a
-    CSRLD #8
-    RSS
-    SS                      ; RS1 ← b
-    RSS
+    ; Reload b → RS1 first
+    CSRLD #4                ; ACC ← b (GPR3)
+    SS                      ; RS0 ← b, ACC ← old_RS0
+    RSS                     ; RS1 ← b, RS0 ← old_RS1
+    ; Reload a → RS0
+    CSRLD #3                ; ACC ← a (GPR2)
+    SS                      ; RS0 ← a, ACC ← old_RS0
+    ; Result: RS0=a, RS1=b
     
     LDi #(add & 0xFF)
     SA
@@ -156,15 +162,12 @@ complex:
     ; ...
     
     ; === EPILOGUE ===
-    ; Restore RA1
-    CSRLD #6                ; ACC ← SP
-    DEC
-    CSRST #6                ; SP--
-    SA                      ; RA0 ← SP
-    XMEM #0b0000            ; ACC ← saved_RA1
-    SA                      ; RA1 ← ACC
-    
-    JAL                     ; Return
+    CSRLD #2                ; ACC ← SP
+    SA                      ; RA0 ← SP,           ACC ← old_ACC
+    XMEM #0b0010            ; post-inc pop: ACC ← [RA0], RA0++
+    SA                      ; ACC ← new_SP,        RA0 ← return_addr
+    CSRST #2                ; SP ← new_SP
+    JMP                     ; PC ← return_addr
 
 ; Prologue: ~7 bytes, ~6 instructions
 ; Epilogue: ~7 bytes, ~7 instructions
@@ -181,22 +184,23 @@ func:
     ; [as above, ~6 instructions]
     
     ; Save GPR2 if we'll modify it
-    CSRLD #7                ; ACC ← GPR2
+    CSRLD #3                ; ACC ← GPR2
     ; [save to stack via RA0]
     
     ; === BODY ===
     ; Use GPR2 freely
-    CSRST #7                ; GPR2 ← local_var
+    CSRST #3                ; GPR2 ← local_var
     
     ; === EPILOGUE ===
     ; Restore GPR2
     ; [load from stack]
-    CSRST #7
+    CSRST #3
     
     ; Restore RA1
     ; [as above, ~7 instructions]
-    
-    JAL
+
+    RSA                     ; RA0 ← RA1 (return address)
+    JMP                     ; PC ← return address
 ```
 
 ---
@@ -216,24 +220,27 @@ func:
 **PUSH ACC:**
 ```assembly
 .macro PUSH_ACC
-    CSRLD #6                ; ACC ← SP
-    SA                      ; RA0 ← SP, ACC ← old_value
-    CSRST #7                ; GPR2 ← old_value (backup)
-    CSRLD #7                ; ACC ← old_value
-    XMEM #0b1010            ; [RA0++] ← ACC, RA0++
-    SA                      ; ACC ← RA0 (new SP)
-    CSRST #6                ; SP ← ACC
+    ; Pushes ACC onto the stack. Clobbers RA0, RS0 (both caller-saved).
+    SS                      ; RS0 ← value, ACC ← old_RS0
+    CSRLD #2                ; ACC ← SP
+    SA                      ; RA0 ← SP,    ACC ← old_ACC
+    SS                      ; ACC ← value (from RS0), RS0 ← old_ACC
+    XMEM #0b1110            ; pre-dec push: RA0--, [RA0] ← value
+    SA                      ; ACC ← new_SP
+    CSRST #2                ; SP ← new_SP
 .endm
 ```
 
 **POP ACC:**
 ```assembly
 .macro POP_ACC
-    CSRLD #6                ; ACC ← SP
-    DEC
-    CSRST #6                ; SP--
-    SA                      ; RA0 ← SP
-    XMEM #0b0000            ; ACC ← [RA0]
+    ; Pops top of stack into ACC. Clobbers RA0.
+    CSRLD #2                ; ACC ← SP
+    SA                      ; RA0 ← SP,    ACC ← old_ACC
+    XMEM #0b0010            ; post-inc pop: ACC ← [RA0], RA0++
+    SA                      ; ACC ← new_SP, RA0 ← popped_value
+    CSRST #2                ; SP ← new_SP
+    SA                      ; ACC ← popped_value
 .endm
 ```
 
@@ -297,12 +304,13 @@ main:
     JAL
     
     ; Clean up stack (caller cleanup)
-    CSRLD #6
+    CSRLD #2
     INC
-    CSRST #6                ; SP++
+    CSRST #2                ; SP++
     
     ; Result in ACC
-    JAL                     ; Return from main
+    RSA                     ; RA0 ← RA1 (return address)
+    JMP                     ; Return from main
 ```
 
 **Callee:**
@@ -313,20 +321,21 @@ add3:
     ADD                     ; ACC ← a + b
     
     ; Save temp
-    CSRST #7                ; GPR2 ← (a+b)
+    CSRST #3                ; GPR2 ← (a+b)
     
     ; Load c from stack
-    CSRLD #6                ; ACC ← SP
+    CSRLD #2                ; ACC ← SP
     ; [adjust offset to reach arg c]
     SA                      ; RA0 ← &c
     XMEM #0b0000            ; ACC ← c
     
     ; Add c
     SS                      ; RS0 ← c
-    CSRLD #7                ; ACC ← (a+b)
+    CSRLD #3                ; ACC ← (a+b)
     ADD                     ; ACC ← (a+b) + c
-    
-    JAL                     ; Return
+
+    RSA                     ; RA0 ← RA1 (return address)
+    JMP                     ; PC ← return address
 ```
 
 ---
@@ -375,7 +384,8 @@ make_point:
     ; Store y
     XMEM #0b1000            ; [RA0] ← y
     
-    JAL                     ; Return (result via pointer)
+    RSA                     ; RA0 ← RA1 (return address)
+    JMP                     ; Return (result via pointer)
 ```
 
 ---
@@ -418,9 +428,9 @@ make_point:
 
 ```assembly
 ; Efficient array/struct copy
-CSRLD #6                ; RA0 ← source
+CSRLD #2                ; RA0 ← source
 SA
-CSRLD #7                ; RA1 ← dest
+CSRLD #3                ; RA1 ← dest
 RSA
 
 loop:
@@ -467,31 +477,35 @@ Provide standard macros for common patterns:
 ```assembly
 ; Calling convention helpers
 .macro CALL target
-    LDi #(target & 0xFF)
-    SA
-    ; [high byte if needed]
-    JAL
+    LDi #target             ; ACC ← full 16-bit target address (LK16)
+    SA                      ; RA0 ← target
+    JAL                     ; RA1 ← PC_next, PC ← target
+.endm
+
+.macro RET
+    ; Return from a leaf function (RA1 holds return address).
+    RSA                     ; RA0 ← RA1 (return address)
+    JMP                     ; PC ← return address
 .endm
 
 .macro PROLOGUE_NONLEAF
-    ; Save RA1
-    CSRLD #6
+    CSRLD #2
     SA
+    RSA
     SA
-    XMEM #0b1010
+    RSA
+    XMEM #0b1110
     SA
-    CSRST #6
+    CSRST #2
 .endm
 
 .macro EPILOGUE_NONLEAF
-    ; Restore RA1
-    CSRLD #6
-    DEC
-    CSRST #6
+    CSRLD #2
     SA
-    XMEM #0b0000
+    XMEM #0b0010
     SA
-    JAL
+    CSRST #2
+    JMP
 .endm
 
 ; Use:

@@ -90,12 +90,12 @@ module tb_misao;
 
         // Phase 1: LDI (UL -> LK8 -> LK16), aligned with NOPs
         memory[1]  = {4'h5, LDI};    // LDI 0x5 -> ACC=0x0005
-        memory[2]  = {CFG, NOP};     // XOP CFG
+        memory[2]  = {CFG, NOP};     // CFG
         memory[3]  = {4'h0, 4'h1};   // CFG LK8 -> link=LK8
         memory[4]  = {4'h3, LDI};    // LDI 0x00B3 (aligned)
         memory[5]  = {NOP, 4'hB};    // padding high nibble
-        memory[6]  = {4'h2, CFG};     // XOP CFG
-        memory[7]  = {NOP, 4'h0};   // CFG LK16 -> link=LK16
+        memory[6]  = {4'h2, CFG};    // CFG
+        memory[7]  = {NOP, 4'h0};    // CFG LK16 -> link=LK16
         memory[8]  = {4'hE, LDI};    // LDI 0xCAFE (aligned)
         memory[9]  = {4'hA, 4'hF};
         memory[10] = {NOP, 4'hC};    // align next phase

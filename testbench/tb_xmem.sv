@@ -97,8 +97,9 @@ module tb_misao;
         // ================================================================
 
         // Phase 1: Setup (LK16) - RA0=0x0080, RA1=0x0090
-        memory[1]  = {CFG, XOP};     // XOP CFG
-        memory[2]  = {4'h4, 4'hE};   // cfg=0x4E (LK16)
+        // Phase 1: Setup (LK16) - RA0=0x0080, RA1=0x0090
+        memory[1]  = {4'h2, CFG};    // CFG 0x02 (LK16)
+        memory[2]  = {NOP, 4'h0};
         memory[3]  = {LDI, 4'h0};    // LDI opcode
         memory[4]  = {4'h8, 4'h0};   // imm0=8, imm1=0
         memory[5]  = {4'h0, 4'h0};   // imm2=0, imm3=0 -> ACC=0x0080
@@ -110,8 +111,9 @@ module tb_misao;
         memory[11] = {RSA, XOP};     // RA1=0x0090, RA0=0x0080
 
         // Phase 2: UL store/load
-        memory[12] = {CFG, XOP};     // XOP CFG
-        memory[13] = {4'h4, 4'hC};   // cfg=0x4C (UL)
+        // Phase 2: UL store/load
+        memory[12] = {4'h0, CFG};    // CFG 0x00 (UL)
+        memory[13] = {NOP, 4'h0};
         memory[14] = {4'h5, LDI};    // ACC=5
         memory[15] = {XMEM, 4'hC};   // store nibble @RA0 (0x80), post-inc -> RA0=0x81
         memory[16] = {4'h3, LDI};    // ACC=3
@@ -119,8 +121,9 @@ module tb_misao;
         memory[18] = {XMEM, 4'h0};   // load nibble @RA0 (0x81) -> ACC=3
 
         // Phase 3: LK8 store/load
-        memory[19] = {CFG, XOP};     // XOP CFG
-        memory[20] = {4'h4, 4'hD};   // cfg=0x4D (LK8)
+        // Phase 3: LK8 store/load
+        memory[19] = {4'h1, CFG};    // CFG 0x01 (LK8)
+        memory[20] = {NOP, 4'h0};
         memory[21] = {4'hB, LDI};    // ACC=0x0B
         memory[22] = {4'h5, 4'h5};   // ACC=0x5B
         memory[23] = {XMEM, 4'hC};   // store byte @RA0 (0x81), post-inc -> RA0=0x82
@@ -131,8 +134,9 @@ module tb_misao;
         memory[28] = {XMEM, 4'h6};   // load byte @RA0 (0x83), post-dec -> ACC=0, RA0=0x82
 
         // Phase 4: LK16 & RA1
-        memory[29] = {CFG, XOP};     // XOP CFG
-        memory[30] = {4'h4, 4'hE};   // cfg=0x4E (LK16)
+        // Phase 4: LK16 & RA1
+        memory[29] = {4'h2, CFG};    // CFG 0x02 (LK16)
+        memory[30] = {NOP, 4'h0};
         memory[31] = {LDI, 4'h0};    // LDI 0x1234
         memory[32] = {4'h3, 4'h4};   // imm0=1, imm1=2
         memory[33] = {4'h1, 4'h2};   // imm2=3, imm3=4 -> ACC=0x1234
@@ -144,16 +148,18 @@ module tb_misao;
         memory[40] = {XMEM, 4'h6};   // load word @RA1 (post-dec AR=1) -> ACC=0x1234
 
         // Phase 5: Advanced XMEM (AR=RA1 in UL, DIR=dec in UL, store endianness)
-        memory[41] = {CFG, XOP};     // UL (default)
-        memory[42] = {4'h4, 4'hC};
+        // Phase 5: Advanced XMEM (AR=RA1 in UL, DIR=dec in UL, store endianness)
+        memory[41] = {4'h0, CFG};    // CFG 0x00 (UL)
+        memory[42] = {NOP, 4'h0};
         memory[43] = {4'h5, LDI};    // ACC=5
         memory[44] = {XMEM, 4'hC};   // Store UL @RA1 (AR=1, DIR=0, AM=0)
         memory[45] = {XMEM, 4'h0};   // Load UL @RA1 (confirm)
         memory[46] = {XMEM, 4'hE};   // Store UL @RA1 with DIR=1, AM=1 (post-dec)
         memory[47] = {XMEM, 4'hE};   // Load UL @RA1 after dec
         // Store-word endianness check in LK16
-        memory[48] = {CFG, XOP};
-        memory[49] = {4'h4, 4'hE};   // LK16
+        // Store-word endianness check in LK16
+        memory[48] = {4'h2, CFG};    // CFG 0x02 (LK16)
+        memory[49] = {NOP, 4'h0};
         memory[50] = {4'h1, LDI};    // imm0
         memory[51] = {4'h2, 4'h2};   // imm1/imm2
         memory[52] = {4'h3, 4'h3};

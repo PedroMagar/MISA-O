@@ -87,8 +87,8 @@ module tb_misao;
         // ================================================================
 
         // Phase 1: UL arithmetic (ADD, SUB, INC, DEC)
-        memory[1]  = {4'h4, CFG};    // CFG 0x44 (UL, CI=0, IMM=0)
-        memory[2]  = {NOP, 4'h4};
+        memory[1]  = {4'h0, CFG};    // CFG 0x00 (UL, CI=0, IMM=0)
+        memory[2]  = {NOP, 4'h0};
         memory[3]  = {4'h5, LDI};    // LDI 0x5
         memory[4]  = {NOP, SS};      // SS -> RS0=0x5
         memory[5]  = {4'h3, LDI};    // LDI 0x3
@@ -98,8 +98,8 @@ module tb_misao;
         memory[9]  = {NOP, INC};     // INC  -> ACC=0xF
         memory[10] = {DEC, XOP};     // DEC  -> ACC=0xE
 
-        memory[11] = {4'hC, CFG};    // CFG 0x4C (UL, IMM=1, CI=0)
-        memory[12] = {NOP, 4'h4};
+        memory[11] = {4'h8, CFG};    // CFG 0x08 (UL, IMM=1, CI=0)
+        memory[12] = {NOP, 4'h0};
         memory[13] = {4'h0, LDI};    // LDI 0x0
         memory[14] = {NOP, SS};      // SS -> RS0=0x0
         memory[15] = {4'h1, LDI};    // LDI 0x1
@@ -108,8 +108,8 @@ module tb_misao;
         memory[18] = {SUB, XOP};     // SUBI prefix
         memory[19] = {NOP, 4'h2};    // imm=2 -> ACC=0xF, C=1
 
-        memory[20] = {4'h4, CFG};    // CFG 0xC4 (UL, CI=1, IMM=0)
-        memory[21] = {NOP, 4'hC};
+        memory[20] = {4'h0, CFG};    // CFG 0x20 (UL, CI=1, IMM=0)
+        memory[21] = {NOP, 4'h2};
         memory[22] = {4'h1, LDI};    // LDI 0x1
         memory[23] = {NOP, SS};      // SS -> RS0=0x1
         memory[24] = {4'h0, LDI};    // LDI 0x0
@@ -128,8 +128,8 @@ module tb_misao;
         memory[37] = {SUB, XOP};     // SUB (CI=1, C=1) -> ACC=0xF, C=1
 
         // Phase 1: UL logic & shifts (AND, INV, OR, XOR, SHL, SHR)
-        memory[38] = {4'h4, CFG};    // CFG 0x44 (UL, CI=0, IMM=0)
-        memory[39] = {NOP, 4'h4};
+        memory[38] = {4'h0, CFG};    // CFG 0x00 (UL, CI=0, IMM=0)
+        memory[39] = {NOP, 4'h0};
         memory[40] = {4'h0, LDI};    // LDI 0x0
         memory[41] = {NOP, SHL};     // SHL -> C=0
         memory[42] = {4'hC, LDI};    // LDI 0xC
@@ -142,8 +142,8 @@ module tb_misao;
         memory[49] = {NOP, SHL};     // SHL -> ACC=0xE, C=1
         memory[50] = {SHR, XOP};     // SHR -> ACC=0x7, C=0
 
-        memory[51] = {4'hC, CFG};    // CFG 0x4C (UL, IMM=1)
-        memory[52] = {NOP, 4'h4};
+        memory[51] = {4'h8, CFG};    // CFG 0x08 (UL, IMM=1)
+        memory[52] = {NOP, 4'h0};
         memory[53] = {4'h8, LDI};    // LDI 0x8
         memory[54] = {NOP, SHL};     // SHL -> C=1
         memory[55] = {4'h0, LDI};    // LDI 0x0
@@ -155,8 +155,8 @@ module tb_misao;
         memory[61] = {NOP, 4'h7};    // imm=7 -> ACC=0x4
 
         // Phase 2: LK8 arithmetic (ADD, SUB, INC, DEC)
-        memory[62] = {4'h5, CFG};    // CFG 0x45 (LK8, CI=0, IMM=0)
-        memory[63] = {NOP, 4'h4};
+        memory[62] = {4'h1, CFG};    // CFG 0x01 (LK8, CI=0, IMM=0)
+        memory[63] = {NOP, 4'h0};
         memory[64] = {4'h1, LDI};    // LDI 0x21
         memory[65] = {NOP, 4'h2};
         memory[66] = {NOP, SS};      // SS -> RS0=0x21
@@ -190,8 +190,8 @@ module tb_misao;
         memory[92] = {SHR, XOP};     // SHR -> ACC=0x7F, C=0
 
         // Phase 3: LK16 arithmetic (ADD, SUB, INC, DEC)
-        memory[93]  = {4'h6, CFG};   // CFG 0x46 (LK16, CI=0, IMM=0)
-        memory[94]  = {NOP, 4'h4};
+        memory[93]  = {4'h2, CFG};   // CFG 0x02 (LK16, CI=0, IMM=0)
+        memory[94]  = {NOP, 4'h0};
         memory[95]  = {4'h1, LDI};   // LDI 0x0001
         memory[96]  = {4'h0, 4'h0};
         memory[97]  = {NOP, 4'h0};
