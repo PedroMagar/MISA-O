@@ -21,8 +21,9 @@ These registers are **not preserved** across function calls. The caller must sav
 | **RS1** | A1 | Argument 2 / scratch | Second function argument |
 | **RA0** | TEMP | Address calculation | Temporary address register |
 | **RA1** | LR | Link Register | Return address (set by JAL) |
+| **GPR2** | T0 | Scratch / temp | CSR #3; free for any use across call |
 
-**Rationale:** These registers are frequently modified and have short lifetimes. Requiring the callee to save them would increase prologue overhead unnecessarily.
+**Rationale:** These registers are frequently modified and have short lifetimes. Requiring the callee to save them would increase prologue overhead unnecessarily. GPR2 is included as scratch to give compilers a fast temporary that avoids stack traffic in the common case.
 
 #### Callee-Saved (Non-Volatile) Registers
 
@@ -31,17 +32,16 @@ These registers **must be preserved** by the callee if modified. The callee save
 | Register | Alias | Purpose | CSR Index | Notes |
 |----------|-------|---------|-----------|-------|
 | **GPR1** | SP or S0 | Stack Pointer or saved register | #2 | See profile note below |
-| **GPR2** | S1 | Saved register | #3 | General-purpose callee-saved |
-| **GPR3** | S2 | Saved register | #4 | General-purpose callee-saved |
+| **GPR3** | S1 | Saved register | #4 | General-purpose callee-saved |
 
 **Profile Note:**
-- **Extended Profile** (required for C): GPR1-3 are available
-- **Minimal Profile**: GPRs may be unavailable (functions must use memory)
+- **Baseline Profile** (required for C): GPR1-3 are available
+- **Compact Profile**: GPRs may be unavailable (functions must use memory)
 
 **Convention Recommendation:**
 - **GPR1**: Stack Pointer (SP) by convention
-- **GPR2**: Staging / temp for prologue/epilogue
-- **GPR3**: Link register preparation or saved variable
+- **GPR2**: Scratch / general-purpose temp
+- **GPR3**: Callee-saved variable (save before use, restore before return)
 
 ---
 
@@ -70,10 +70,9 @@ caller:
     ; If caller needs RA1 later, save it:
     ; [save RA1 to stack or GPR]
     
-    ; Prepare target address
-    LDi #(callee & 0xFF)
-    SA                      ; RA0 ← &callee
-    ; [high byte if needed]
+    ; Prepare target address (LK16: LDi loads full 16-bit address)
+    LDi #callee             ; ACC ← callee address (16-bit)
+    SA                      ; RA0 ← callee addr,  ACC ← old_RA0
     
     ; Call
     JAL                     ; RA1 ← PC_next, PC ← RA0
@@ -99,13 +98,16 @@ Minimal or no prologue needed:
 add:
     ; No prologue needed (doesn't call, doesn't use GPRs)
     
-    ADD                     ; ACC ← RS0 + RS1
+    ; ADD computes ACC+RS0. Load a from RS0 into ACC first, then put b in RS0.
+    SS                      ; ACC ← a (RS0),  RS0 ← old_ACC
+    RSS                     ; RS0 ← b (RS1),  RS1 ← old_RS0
+    ADD                     ; ACC ← a + b  ✓
 
     RSA                     ; RA0 ← RA1 (return address)
-    JMP                     ; PC ← return address
+    JMP                     ; PC ← RA0
 
 ; Prologue: 0 instructions ✅
-; Epilogue: 0 instructions ✅
+; Epilogue: 2 instructions (RSA + JMP)
 ```
 
 ##### B. **Non-Leaf Function** (Calls Others)
@@ -118,20 +120,20 @@ Must save **RA1** (link register) because it will be overwritten by nested JAL:
 ; Calls: add() and mul()
 complex:
     ; === PROLOGUE ===
-    ; Save RA1 (link register)
+    ; Save RA1 (link register). Requires LK16 mode (CFG.W = 10).
     CSRLD #2                ; ACC ← SP
-    SA                      ; RA0 ← SP,           ACC ← old_ACC
+    SA                      ; RA0 ← SP,           ACC ← old_RA0
     RSA                     ; RA0 ← return_addr,  RA1 ← SP
-    SA                      ; ACC ← return_addr,  RA0 ← old_ACC
-    RSA                     ; RA0 ← SP,           RA1 ← return_addr (restored)
-    XMEM #0b1110            ; pre-dec push: RA0--, [RA0] ← return_addr
-    SA                      ; ACC ← new_SP
+    SA                      ; ACC ← return_addr,  RA0 ← old_RA0
+    RSA                     ; RA0 ← SP,           RA1 ← old_RA0 (caller's RA0)
+    XMEM #0b1110            ; pre-dec push: RA0--, [RA0] ← return_addr (stride=2)
+    SA                      ; ACC ← new_SP,       RA0 ← return_addr
     CSRST #2                ; SP ← new_SP
 
-    ; Save a (RS0) → GPR2
+    ; Save a (RS0) → GPR2 (scratch — no save/restore needed)
     SS                      ; ACC ← a, RS0 ← old_ACC
     CSRST #3                ; GPR2 ← a
-    ; Save b (RS1) → GPR3
+    ; Save b (RS1) → GPR3 (callee-saved — must be restored before return)
     RSS                     ; RS0 ← b, RS1 ← old_RS0
     SS                      ; ACC ← b, RS0 ← a
     CSRST #4                ; GPR3 ← b
@@ -147,8 +149,8 @@ complex:
     SS                      ; RS0 ← a, ACC ← old_RS0
     ; Result: RS0=a, RS1=b
     
-    LDi #(add & 0xFF)
-    SA
+    LDi #add                ; ACC ← add address (LK16: full 16-bit)
+    SA                      ; RA0 ← add addr, ACC ← old_RA0
     JAL                     ; Call add
     
     ; ACC has add result, save it
@@ -161,13 +163,13 @@ complex:
     ; Combine results
     ; ...
     
-    ; === EPILOGUE ===
+    ; === EPILOGUE === (requires LK16 mode)
     CSRLD #2                ; ACC ← SP
-    SA                      ; RA0 ← SP,           ACC ← old_ACC
-    XMEM #0b0010            ; post-inc pop: ACC ← [RA0], RA0++
+    SA                      ; RA0 ← SP,           ACC ← old_RA0
+    XMEM #0b0010            ; post-inc pop: ACC ← [RA0], RA0++ (stride=2)
     SA                      ; ACC ← new_SP,        RA0 ← return_addr
     CSRST #2                ; SP ← new_SP
-    JMP                     ; PC ← return_addr
+    JMP                     ; PC ← RA0 (return_addr)
 
 ; Prologue: ~7 bytes, ~6 instructions
 ; Epilogue: ~7 bytes, ~7 instructions
@@ -175,32 +177,32 @@ complex:
 
 ##### C. **Function Using Callee-Saved Registers**
 
-If a function modifies GPR1/2/3, it must save and restore them:
+If a function modifies GPR1 or GPR3, it must save and restore them. GPR2 is caller-saved and may be used freely without save/restore.
 
 ```assembly
 func:
     ; === PROLOGUE ===
-    ; Save RA1
-    ; [as above, ~6 instructions]
+    ; Save RA1 and update SP (PROLOGUE_NONLEAF or inline, ~8 instructions)
+    ; [as above]
     
-    ; Save GPR2 if we'll modify it
-    CSRLD #3                ; ACC ← GPR2
-    ; [save to stack via RA0]
+    ; Save GPR3 before modifying it (callee-saved)
+    CSRLD #4                ; ACC ← GPR3 (original value)
+    PUSH_ACC                ; [SP] ← GPR3 (saved)
     
     ; === BODY ===
-    ; Use GPR2 freely
-    CSRST #3                ; GPR2 ← local_var
+    ; Use GPR3 as a local variable
+    CSRST #4                ; GPR3 ← local_var
+    ; GPR2 (#3) is scratch — use freely
     
     ; === EPILOGUE ===
-    ; Restore GPR2
-    ; [load from stack]
-    CSRST #3
+    ; Restore GPR3
+    POP_ACC                 ; ACC ← saved GPR3 value
+    CSRST #4                ; GPR3 ← restored value
     
-    ; Restore RA1
-    ; [as above, ~7 instructions]
-
-    RSA                     ; RA0 ← RA1 (return address)
-    JMP                     ; PC ← return address
+    ; Restore RA1 from stack and return
+    ; EPILOGUE_NONLEAF pops return_addr → RA0, restores SP, then JMPs.
+    ; Do NOT add RSA+JMP after this — RA1 holds caller's RA0, not return_addr.
+    ; [EPILOGUE_NONLEAF or inline, ~6 instructions + JMP]
 ```
 
 ---
@@ -215,18 +217,30 @@ func:
 - **Points to the last valid item** (full descending stack)
 - **Not automatically updated** by hardware (software manages)
 
+#### LK16 Mode Requirement
+
+All stack operations — PUSH, POP, prologue, and epilogue — **require LK16 mode** (`CFG.W = 10`) to be active. This is because:
+
+- `CSRLD` / `CSRST` are only available in LK16 mode (the same opcode executes `RACC`/`RRS` in UL/LK8).
+- `XMEM` stride is **2 bytes** in LK16, which is required to correctly advance SP over 16-bit values (return addresses, saved GPRs).
+- `SS` respects `CFG.W`; loading 16-bit arguments requires LK16.
+
+**Convention:** CFG.W = LK16 (`CFG #0b00000010`) must be in effect at all function call boundaries. Functions may temporarily change W for arithmetic and must restore it before any stack operation or return.
+
 #### Stack Operations
 
 **PUSH ACC:**
 ```assembly
 .macro PUSH_ACC
-    ; Pushes ACC onto the stack. Clobbers RA0, RS0 (both caller-saved).
-    SS                      ; RS0 ← value, ACC ← old_RS0
+    ; Pushes ACC onto the stack.
+    ; Requires: LK16 mode active (CFG.W = 10) — stride=2, CSRLD/CSRST valid.
+    ; Clobbers: RA0, RS0 (both caller-saved).
+    SS                      ; RS0 ← value,          ACC ← old_RS0
     CSRLD #2                ; ACC ← SP
-    SA                      ; RA0 ← SP,    ACC ← old_ACC
-    SS                      ; ACC ← value (from RS0), RS0 ← old_ACC
-    XMEM #0b1110            ; pre-dec push: RA0--, [RA0] ← value
-    SA                      ; ACC ← new_SP
+    SA                      ; RA0 ← SP,             ACC ← old_RA0
+    SS                      ; ACC ← value (RS0),    RS0 ← old_RA0
+    XMEM #0b1110            ; pre-dec push: RA0 -= 2, [RA0] ← value
+    SA                      ; ACC ← new_SP,         RA0 ← value
     CSRST #2                ; SP ← new_SP
 .endm
 ```
@@ -234,13 +248,15 @@ func:
 **POP ACC:**
 ```assembly
 .macro POP_ACC
-    ; Pops top of stack into ACC. Clobbers RA0.
+    ; Pops top of stack into ACC.
+    ; Requires: LK16 mode active (CFG.W = 10) — stride=2, CSRLD/CSRST valid.
+    ; Clobbers: RA0 (left holding new_SP after macro).
     CSRLD #2                ; ACC ← SP
-    SA                      ; RA0 ← SP,    ACC ← old_ACC
-    XMEM #0b0010            ; post-inc pop: ACC ← [RA0], RA0++
-    SA                      ; ACC ← new_SP, RA0 ← popped_value
+    SA                      ; RA0 ← SP,             ACC ← old_RA0
+    XMEM #0b0010            ; post-inc pop: ACC ← [RA0], RA0 += 2
+    SA                      ; ACC ← new_SP,         RA0 ← popped_value
     CSRST #2                ; SP ← new_SP
-    SA                      ; ACC ← popped_value
+    SA                      ; ACC ← popped_value,   RA0 ← new_SP
 .endm
 ```
 
@@ -252,7 +268,7 @@ High Memory
 ├────────────────┤
 │ Saved RA1      │ ← Callee saves link register
 ├────────────────┤
-│ Saved GPRs     │ ← Callee saves GPR2/3 if used
+│ Saved GPRs     │ ← Callee saves GPR1/GPR3 if used
 ├────────────────┤
 │ Local Vars     │ ← Callee allocates space
 ├────────────────┤
@@ -286,27 +302,29 @@ int main() {
 **Caller:**
 ```assembly
 main:
-    ; Args 1-2 in registers
+    ; Stack arg FIRST — PUSH_ACC clobbers RS0 (first instruction is SS: ACC↔RS0).
+    ; Push before loading register args to avoid overwriting them.
+    LDi #3
+    PUSH_ACC                ; Stack ← 3 (c)
+
+    ; Args 1-2 in registers (set after stack args are pushed)
     LDi #1
     SS                      ; RS0 ← 1 (a)
     LDi #2
     RSS
-    SS                      ; RS1 ← 2 (b)
-    RSS
+    SS                      ; RS0 ← 2, (paired with next RSS →) RS1 ← 2 (b)
+    RSS                     ; RS0 ← 1 (a),   RS1 ← 2 (b)  ✓
     
-    ; Arg 3 on stack
-    LDi #3
-    PUSH_ACC                ; Stack ← 3 (c)
-    
-    ; Call
-    LDi #(add3 & 0xFF)
-    SA
+    ; Call (LK16: LDi loads full 16-bit address)
+    LDi #add3               ; ACC ← add3 address
+    SA                      ; RA0 ← add3 addr, ACC ← old_RA0
     JAL
     
-    ; Clean up stack (caller cleanup)
-    CSRLD #2
-    INC
-    CSRST #2                ; SP++
+    ; Clean up stack (caller cleanup — LK16 PUSH used stride=2)
+    CSRLD #2                ; ACC ← SP
+    INC                     ; SP+1
+    INC                     ; SP+2
+    CSRST #2                ; SP ← SP+2
     
     ; Result in ACC
     RSA                     ; RA0 ← RA1 (return address)
@@ -316,26 +334,28 @@ main:
 **Callee:**
 ```assembly
 add3:
-    ; a in RS0, b in RS1, c at [SP+offset]
+    ; a in RS0, b in RS1, c at [SP] (top of stack — no prologue, no RA1 push)
     
-    ADD                     ; ACC ← a + b
+    ; ADD computes ACC+RS0. Load a into ACC first, then put b in RS0.
+    SS                      ; ACC ← a (RS0), RS0 ← old_ACC
+    RSS                     ; RS0 ← b (RS1), RS1 ← old_RS0
+    ADD                     ; ACC ← a + b  ✓
     
-    ; Save temp
+    ; Save (a+b) to GPR2 temporarily (scratch).
     CSRST #3                ; GPR2 ← (a+b)
     
-    ; Load c from stack
+    ; Load c from [SP] — c is at top of stack (pushed last by caller, no prologue offset)
     CSRLD #2                ; ACC ← SP
-    ; [adjust offset to reach arg c]
-    SA                      ; RA0 ← &c
-    XMEM #0b0000            ; ACC ← c
+    SA                      ; RA0 ← SP,  ACC ← old_RA0
+    XMEM #0b0000            ; ACC ← [RA0] = c  (load, no auto-modify)
     
-    ; Add c
-    SS                      ; RS0 ← c
+    ; Add c to (a+b)
+    SS                      ; RS0 ← c (ACC), ACC ← b (old RS0 from earlier RSS)
     CSRLD #3                ; ACC ← (a+b)
-    ADD                     ; ACC ← (a+b) + c
+    ADD                     ; ACC ← (a+b) + c  ✓
 
     RSA                     ; RA0 ← RA1 (return address)
-    JMP                     ; PC ← return address
+    JMP                     ; PC ← RA0
 ```
 
 ---
@@ -364,28 +384,27 @@ struct Point make_point(int x, int y) {
 **Compiled (struct return via pointer):**
 ```assembly
 ; make_point(result_ptr, x, y)
-; RS0 = result_ptr (hidden arg)
-; RS1 = x
-; Stack = y
+; RS0 = result_ptr (hidden arg), RS1 = x, [SP] = y
+; Leaf function: RA1 = return address
 
 make_point:
-    ; result_ptr in RS0
-    SA                      ; RA0 ← result_ptr
+    ; SA swaps ACC↔RA0, not RS0→RA0. Must load result_ptr from RS0 into ACC first.
+    SS                      ; ACC ← result_ptr (RS0), RS0 ← old_ACC
+    SA                      ; RA0 ← result_ptr,       ACC ← old_RA0
     
-    ; Store x
-    ; RS1 has x already
-    SS
-    SA                      ; ACC ← x
-    XMEM #0b1010            ; [RA0++] ← x
+    ; Store x (in RS1) to [RA0++] = [result_ptr], advance RA0 to result_ptr+2
+    RSS                     ; RS0 ← x (RS1),          RS1 ← old_RS0 (junk)
+    SS                      ; ACC ← x,                RS0 ← old_RA0 (junk)
+    XMEM #0b1010            ; [RA0++] ← x   (p.x = x, RA0 = result_ptr+2)
     
-    ; Load y from stack
-    ; [...]
+    ; Load y from stack [SP] into ACC, keeping RA0 = result_ptr+2
+    ; [... y → ACC, RA0 = result_ptr+2 preserved ...]
     
-    ; Store y
-    XMEM #0b1000            ; [RA0] ← y
+    ; Store y to [RA0] = [result_ptr+2]
+    XMEM #0b1000            ; [RA0] ← y     (p.y = y)
     
     RSA                     ; RA0 ← RA1 (return address)
-    JMP                     ; Return (result via pointer)
+    JMP                     ; PC ← RA0
 ```
 
 ---
@@ -397,7 +416,7 @@ make_point:
 | **Baseline** | GPR1-3 | ✅ Yes | **Minimum for C** |
 | **Baseline + Interrupt** | GPR1-3 + ISR | ✅ Yes | Full C + interrupts |
 
-**Recommendation:** C toolchains should **require Extended Profile** as minimum target.
+**Recommendation:** C toolchains should **require Baseline Profile** as minimum target.
 
 ---
 
@@ -427,17 +446,22 @@ make_point:
 #### 2. **Leverage Post-Increment**
 
 ```assembly
-; Efficient array/struct copy
-CSRLD #2                ; RA0 ← source
-SA
-CSRLD #3                ; RA1 ← dest
-RSA
+; Efficient array/struct copy (requires LK16 mode for CSRLD)
+; RA0 = source, RA1 = dest (swap as needed per iteration)
+CSRLD #2                ; ACC ← source ptr
+SA                      ; RA0 ← source,   ACC ← old RA0
+CSRLD #3                ; ACC ← dest ptr
+RSA                     ; RA1 ← dest,     RA0 ← source  (RSA swaps RA0↔RA1)
+RSA                     ; RA0 ← source,   RA1 ← dest    (restore: RSA again)
 
 loop:
-    XMEM #0b0010        ; ACC ← [RA0++]
-    XMEM #0b1010        ; [RA1++] ← ACC
-    ; [decrement counter]
-    JAL #loop
+    XMEM #0b0100        ; ACC ← [RA0], RA0++  (load + post-increment source)
+    RSA                 ; RA0 ↔ RA1  (RA0 = dest)
+    XMEM #0b1100        ; [RA0] ← ACC, RA0++  (store + post-increment dest)
+    RSA                 ; RA0 ↔ RA1  (RA0 = source)
+    ; [decrement counter, update flags]
+    BRC #NE #loop       ; branch back while counter != 0 (PC-relative offset)
+; Note: for bulk copies prefer MCPY (XOP;XMEM), which handles both pointers natively.
 ```
 
 #### 3. **Use CFG.IMM for Constants**
@@ -458,12 +482,14 @@ CFG #0x00               ; IMM=0
 
 ```assembly
 ; Set multiple flags at once:
-CFG #0b10001010         ; CI=1, IMM=1, LK8
-; Now multiple operations benefit
+; CFG layout: [7:6]=RSV, [5]=CI, [4]=IE, [3]=IMM, [2]=SIGN, [1:0]=W
+; CI=1→bit5, IMM=1→bit3, LK8→bits[1:0]=01  →  0b00101001
+CFG #0b00101001         ; CI=1, IMM=1, LK8
+; Now multiple operations benefit from carry-in and immediate mode
 ADD #5
 SUB #3
 ; ...
-CFG #0x00               ; Reset
+CFG #0x00               ; Reset (UL, no CI, no IMM)
 ```
 
 ---
@@ -475,37 +501,44 @@ CFG #0x00               ; Reset
 Provide standard macros for common patterns:
 
 ```assembly
-; Calling convention helpers
+; Calling convention helpers.
+; All macros below require LK16 mode (CFG.W = 10) to be active.
+
 .macro CALL target
-    LDi #target             ; ACC ← full 16-bit target address (LK16)
-    SA                      ; RA0 ← target
-    JAL                     ; RA1 ← PC_next, PC ← target
+    ; Requires: LK16 mode (LDi loads full 16-bit address; CSRLD/CSRST valid).
+    LDi #target             ; ACC ← full 16-bit target address
+    SA                      ; RA0 ← target,   ACC ← old_RA0
+    JAL                     ; RA1 ← PC_next,  PC ← RA0 (target)
 .endm
 
 .macro RET
     ; Return from a leaf function (RA1 holds return address).
     RSA                     ; RA0 ← RA1 (return address)
-    JMP                     ; PC ← return address
+    JMP                     ; PC ← RA0
 .endm
 
 .macro PROLOGUE_NONLEAF
-    CSRLD #2
-    SA
-    RSA
-    SA
-    RSA
-    XMEM #0b1110
-    SA
-    CSRST #2
+    ; Push return address (RA1) onto the stack and update SP.
+    ; Requires LK16 mode. Clobbers ACC, RA0; RA1 receives caller's RA0.
+    CSRLD #2                ; ACC ← SP
+    SA                      ; RA0 ← SP,          ACC ← old_RA0
+    RSA                     ; RA0 ← return_addr, RA1 ← SP
+    SA                      ; ACC ← return_addr, RA0 ← old_RA0
+    RSA                     ; RA0 ← SP,          RA1 ← old_RA0
+    XMEM #0b1110            ; pre-dec push: RA0 -= 2, [RA0] ← return_addr
+    SA                      ; ACC ← new_SP,      RA0 ← return_addr
+    CSRST #2                ; SP ← new_SP
 .endm
 
 .macro EPILOGUE_NONLEAF
-    CSRLD #2
-    SA
-    XMEM #0b0010
-    SA
-    CSRST #2
-    JMP
+    ; Pop return address from stack, restore SP, and jump to it.
+    ; Requires LK16 mode. Clobbers ACC, RA0.
+    CSRLD #2                ; ACC ← SP
+    SA                      ; RA0 ← SP,          ACC ← old_RA0
+    XMEM #0b0010            ; post-inc pop: ACC ← [RA0], RA0 += 2
+    SA                      ; ACC ← new_SP,      RA0 ← return_addr
+    CSRST #2                ; SP ← new_SP
+    JMP                     ; PC ← RA0 (return_addr)
 .endm
 
 ; Use:
@@ -524,9 +557,13 @@ int add(int a, int b) {
     return a + b;
 }
 
-// Use GPR for local
+// Use GPR2 as scratch temp
 __attribute__((register("GPR2")))
 int temp;
+
+// Use GPR3 as a persistent local across calls (callee-saved; save/restore in prologue/epilogue)
+__attribute__((register("GPR3")))
+int saved_local;
 
 // Force inline (avoid call overhead)
 __attribute__((always_inline))
@@ -542,7 +579,7 @@ inline int square(int x) {
 MISA-O provides a **C-friendly calling convention** with:
 
 ✅ Clear **caller-saved** vs **callee-saved** semantics
-✅ **GPR1-3** for efficient register allocation
+✅ **GPR1/3** callee-saved + scratch for efficient register allocation
 ✅ **Standard stack operations** via SP (GPR1)
 ✅ **Competitive code density** (vs RISC-V)
 ✅ **Minimal prologue** for leaf functions (0 bytes!)

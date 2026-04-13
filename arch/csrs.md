@@ -167,15 +167,16 @@ Consolidates interrupt enables, pending status, and watchdog policy.
 * [0] SW_IE  - Software interrupt enable
 * [1] EXT_IE - External interrupt enable
 * [2] T_IE   - Timer interrupt enable
+* [3] SS_IE  - Single-step enable (Debug Profile; RAZ/WI if Debug Profile absent)
 * [7] WDOG   - Watchdog mode. When set, a timer match (TIMER == TIMERCMP) causes a core reset instead of raising a timer interrupt.
 
 **High byte [15:8] - Status (R / W1C):**
 
-* [8]  IN_ISR  - Core executing inside an ISR (hardware-managed)
-* [9]  EXT_P   - External interrupt pending
-* [10] T_P     - Timer interrupt pending
-* [11] SW_P    - Software interrupt pending
-* [12] DBGSTEP - Debug single-step (optional)
+* [8]  IN_ISR - Core executing inside an ISR (hardware-managed)
+* [9]  EXT_P  - External interrupt pending
+* [10] T_P    - Timer interrupt pending
+* [11] SW_P   - Software interrupt pending
+* [12] SS_P   - Single-step pending (Debug Profile; RAZ if Debug Profile absent)
 * [15:13] reserved.
 
 Pending bits are cleared by writing `1` to the corresponding bit position.

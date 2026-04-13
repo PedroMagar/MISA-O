@@ -16,16 +16,21 @@ All control is encoded **per-instruction** via the function nibble, while observ
 
 ---
 
-### RACC Behavior in SPE Mode
+### RACC / RRS Behavior in SPE Mode
 
-In SPE mode, `RACC` **has a new opcode** `0010` and is **reinterpreted as rotate operation in *LK8*** instead of their **default**:
+In SPE mode, `RACC` and `RRS` **retain their LK8 encodings** (opcode `0110`, Default and Extended respectively), overriding the LK16 `CSRLD`/`CSRST` assignment:
 
-* **RACC** (opcode `0010`, custom): Rotates `ACC` **left by 8 bits**
+* **RACC** (opcode `0110`, Default): Rotates `ACC` **left by 8 bits**
   * Semantics: `ACC ← rotateLeft8(ACC)`
   * Example: `0xABCD → 0xCDAB`
 
+* **RRS** (opcode `0110`, Extended — preceded by `XOP`): Rotates `RS0` **left by 8 bits**
+  * Semantics: `RS0 ← rotateLeft8(RS0)`
+  * Enables efficient byte-lane preparation for cross-term multiplication without exiting SPE mode
+
 **CSR Access in SPE Mode:**
-* Direct CSR access via `CSRLD`/`CSRST` is **still available** while in SPE mode
+* `CSRLD`/`CSRST` are **not available** in SPE mode, as opcode `0110` is reassigned to `RACC`/`RRS`.
+* To access CSRs, switch to LK16 mode first via the `CFG` instruction (opcode `0010` Default, unaffected by the MAD Profile).
 
 ---
 
@@ -42,17 +47,17 @@ In particular:
 
 ### Operand Model
 
-* **Multiplicand**: Always `RS0[LANE*8+7:LANE*8]` (**variable**, selected by func[0])
+* **Multiplicand**: Always `RS0[LANE*8+7:LANE*8]` (**symmetric**, selected by func[0])
   * Lane 0: `RS0[7:0]` (low 8 bits)
   * Lane 1: `RS0[15:8]` (high 8 bits)
 
-* **Multiplier**: `RS1[LANE*8+7:LANE*8]` (**variable**, selected by func[1])
+* **Multiplier**: `RS1[LANE*8+7:LANE*8]` (**symmetric**, same lane index as RS0, selected by func[0])
   * Lane 0: `RS1[7:0]` (low 8 bits)
   * Lane 1: `RS1[15:8]` (high 8 bits)
 
 * **Accumulator**: `ACC` (16-bit, destination)
   * Accumulation is always 16-bit precision
-  * Result may saturate or wrap depending on `func[2]`
+  * Result may saturate or wrap depending on `func[1]`
 
 * **Signedness**: Follows global `CFG.SIGN` flag
   * `SIGN=0`: Unsigned multiply, logical right shift
@@ -62,31 +67,38 @@ In particular:
 
 ### Instructions
 
-| Mode |Binary | Type       | Name     | Description                                       |
-|------|-------|------------|----------|---------------------------------------------------|
-| SPE  | 0010  | *Default*  | **RACC** | Rotate ACC left 8 bits                            |
-| SPE  | 0100  | *Extended* | **MAD**  | Multiply-Add with lane selection                  |
-| SPE  | 1000  | *Extended* | **MAX**  | Maximum value clamp                               |
-| SPE  | 0000  | *Extended* | **MIN**  | Minimum value clamp                               |
+| Mode |Binary | Type         | Name     | Description                                       |
+|------|-------|--------------|----------|---------------------------------------------------|
+| SPE  | 0110  | *Default*    | **RACC** | Rotate ACC left 8 bits                            |
+| SPE  | 0110  | *Extended*¹  | **RRS**  | Rotate RS0 left 8 bits                            |
+| SPE  | 0010  | *Extended*¹  | **MAD**  | Multiply-Add with symmetric lane selection        |
+| SPE  | 0100  | *Extended*¹  | **MAX**  | Maximum value clamp                               |
+| SPE  | 1000  | *Extended*¹  | **MIN**  | Minimum value clamp                               |
+
+¹ *Extended* instructions are preceded by the `XOP` prefix nibble.
 
 ---
 
 ### Instruction Semantics
 
 - **MAD #func**: `ACC ← SAT( ACC + ((LANE_RS0 × LANE_RS1) >> SHIFT) )`; where:
-  * `LANE_RS0` = selected 8-bit lane of RS0 (variable, controlled by func[0])
-  * `LANE_RS1` = selected 8-bit lane of RS1 (variable, controlled by func[1])
+  * `LANE_RS0` = `LANE_RS1` = selected 8-bit lane of RS0 and RS1 (symmetric, controlled by func[0])
   * `×` = multiply (signed/unsigned per CFG.SIGN)
   * `+` = 16-bit addition
-  * `SAT()` = saturation (if enabled by func[2])
-  * `>> SHIFT` = post-operation right shift (amount per func[3])
+  * `SAT()` = saturation (if enabled by func[1])
+  * `>> SHIFT` = post-operation right shift (amount per func[3:2])
   * **Carry flag** (`C`) = carry-out of 16-bit accumulation
   * **Overflow**: Implementation-defined status bits may be exposed via `CORECFG` bits (for BUSY, SAT flags, etc)
 
 - **RACC**: `ACC ← rotateLeft8(ACC)`
   * Rotates ACC left by 8 bits, wrapping around
   * Semantics identical to LK8 `RACC` instruction
-  * Enables multi-byte iterative multiplication
+  * Enables multi-byte iterative accumulation over 16-bit data
+
+- **RRS**: `RS0 ← rotateLeft8(RS0)`
+  * Rotates RS0 left by 8 bits, swapping the two byte lanes
+  * Enables cross-term byte-lane access without exiting SPE mode
+  * Useful for multi-step 16×16-bit multiplication using 8-bit MAD operations
 
 - **MAX**: `ACC ← max( ACC , RS0 )`
   * 16-bit unsigned or signed comparison (per CFG.SIGN)
@@ -105,27 +117,26 @@ In particular:
 The function nibble controls MAD operation:
 
 ```
-func[3] — SHIFT — Post-operation right shift amount:
-  0 = no shift       (>> 0)
-  1 = shift right 4  (>> 4)
+func[3:2] — SHIFT — Post-operation right shift amount:
+  00 = no shift        (>> 0)   — raw accumulation
+  01 = shift right 4   (>> 4)   — Q4 / nibble scaling
+  10 = shift right 8   (>> 8)   — Q8 / byte scaling (8-bit operand norm)
+  11 = shift right 12  (>> 12)  — Q12 / coefficient precision
 
-func[2] — SAT — Saturation enable:
+func[1] — SAT — Saturation enable:
   0 = wrap around (no saturation)
   1 = saturate to min/max
 
-func[1] — LANE_RS1 — RS1 lane select:
-  0 = low 8-bit lane  (RS1[7:0])
-  1 = high 8-bit lane (RS1[15:8])
-
-func[0] — LANE_RS0 — RS0 lane select:
-  0 = low 8-bit lane  (RS0[7:0])
-  1 = high 8-bit lane (RS0[15:8])
+func[0] — LANE — Byte-lane select (symmetric: same index applied to RS0 and RS1):
+  0 = low 8-bit lane   ([7:0])
+  1 = high 8-bit lane  ([15:8])
 ```
 
 **Shift Semantics:**
 * Right shifts are **logical** when `CFG.SIGN=0` (unsigned)
 * Right shifts are **arithmetic** when `CFG.SIGN=1` (signed)
-* `SHIFT=1` applies a logical right shift by 4 bits to the 16-bit product before accumulation, intended for fixed-point Q-format scaling and nibble-based packing.
+* The shift is applied to the 16-bit product **before** accumulation into ACC.
+* `>> 8` is the canonical scaling for 8-bit operands in Q0.8 format, supporting up to 256 accumulations before saturation.
 
 ---
 
