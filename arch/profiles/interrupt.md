@@ -24,19 +24,21 @@ When an interrupt is taken, the core automatically performs the following action
 * Saves `CFG`
 * Saves `FLAGS`
 * Saves `ACC` (full 16-bit)
-* Saves `RA1` (link / return address)
+* Saves `RA0` (link / return address)
 * Saves `IA` and `IAR`
 * Clears `CFG.IE`
 * Jumps to the ISR entry at `IA << 8 + 0x10`
 
 Only this minimal state is guaranteed to be preserved by hardware.
 
+**Rationale for saving RA0:** RA0 is the link register — it holds the return address of the function that was executing when the interrupt fired. If the ISR makes any function call (JAL), it would overwrite RA0 and corrupt the interrupted code's return path. Saving it in hardware allows RETI to restore the call stack without requiring the ISR to save/restore it explicitly.
+
 ### Software-managed state (ISR responsibility)
 
 All other registers are **not preserved automatically** and must be saved and restored by software if required:
 
 * `RS0`, `RS1`
-* `RA0`
+* `RA1` (memory base — save if ISR uses XMEM)
 * Any additional GPRs or extension state
 
 This gives ISRs full flexibility while keeping the core implementation small and deterministic.
@@ -51,7 +53,7 @@ The `RETI` instruction restores the same minimal state saved on interrupt entry:
 * `CFG`
 * `FLAGS`
 * `ACC` (full 16-bit)
-* `RA1`
+* `RA0`
 * `IA` and `IAR`
 
 Registers not restored by `RETI` are assumed to have been handled by the ISR.
@@ -102,14 +104,14 @@ The interrupt frame saves the minimum state required to resume correctly; softwa
 | 0x03      | FLAGS snapshot             | 8b    |
 | 0x04      | IA                         | 8b    |
 | 0x05      | IAR                        | 8b    |
-| 0x06–0x07 | RA1                        | 16b   |
+| 0x06–0x07 | RA0                        | 16b   |
 | 0x08–0x09 | ACC snapshot               | 16b   |
 | 0x0A–0x0F | Reserved for future use    | —     |
 
 ### Description:
   - **Interrupts**: *ia* holds the *Interrupt Service Routine* (ISR) page *Most Significant Byte* (MSB). On interrupt:
     - If **XOP is pending**, the interrupt is **held for one instruction** until the extended instruction retires; interrupts are never taken with XOP active.
-    - The CPU **saves the minimal architectural state required for resumption: PC_next, CFG, FLAGS, ACC, RA1, IA and IAR** at fixed offsets in page `ia` (see layout below). All other registers are software-managed and must be explicitly saved by the ISR if needed.
+    - The CPU **saves the minimal architectural state required for resumption: PC_next, CFG, FLAGS, ACC, RA0, IA and IAR** at fixed offsets in page `ia` (see layout below). All other registers are software-managed and must be explicitly saved by the ISR if needed.
     - Latches `IAR ← IA`, **clears IE**, and
     - **jumps to** `IA<<8 + 0x10` (the ISR entry).
     - Interrupt address register (`IA`) is mapped at `CSR 8`.
@@ -123,9 +125,9 @@ The interrupt frame saves the minimum state required to resume correctly; softwa
       - **FLAGS** ← [base+0x03]           ;
       - **IA**  ← [base+0x04]             ; interrupt page MSB
       - **IAR** ← [base+0x05]             ; previous latched page (for nested unwinding)
-      - **RA1** ← [base+0x06..0x07]       ; address register
+      - **RA0** ← [base+0x06..0x07]       ; link register
       - **ACC** ← [base+0x08..0x09]       ; accumulator snapshot (full 16-bit)
-    - **Not restored by RETI**: **RS0**, **RS1**, **RA0**, or any GPR — the ISR must restore them in software before RETI.
+    - **Not restored by RETI**: **RS0**, **RS1**, **RA1**, or any GPR — the ISR must restore them in software before RETI.
     - After RETI, **IE** follows the IE bit of the active **CFG** (restored or left as set by the ISR).
   - Fixed layout within the ia page:
 ```
@@ -138,8 +140,8 @@ The interrupt frame saves the minimum state required to resume correctly; softwa
       +0x03 : FLAGS snapshot (8-bit)
       +0x04 : IA        (8-bit)
       +0x05 : IAR       (8-bit)
-      +0x06 : RA1[7:0]  (8-bit)
-      +0x07 : RA1[15:8] (8-bit)
+      +0x06 : RA0[7:0]  (8-bit)
+      +0x07 : RA0[15:8] (8-bit)
       +0x08 : ACC[7:0]  (8-bit)
       +0x09 : ACC[15:8] (8-bit)
       +0x0A-0x0F : RSV  (reserved)

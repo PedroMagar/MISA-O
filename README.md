@@ -59,8 +59,8 @@ The accumulators are 4-bit wide and can be linked into wider configurations (2x8
 - 4x4-bit ACC (Accumulator) register.
 - 2x16-bit RS (Register Source) register.
 - 2x16-bit RA (Address) register.
-  - RA0: Active address.
-  - RA1: Return address.
+  - RA0: Jump / Link register.
+  - RA1: Memory base address.
 - 1x8-bit CFG (Configuration) register.
   - [7]: **RSV** - Reserved.
   - [6]: **RSV** - Reserved.
@@ -178,8 +178,8 @@ MISA-O uses **nibble-based encoding** with variable-length instructions:
 - **RSA**: Swap `RA0` ↔ `RA1`; ***flags unchanged***.
 - **SS**:  Swaps the contents of **ACC** *with* source operand register 0 (**RS0**), respecting the active **W** (word-size) configuration: `ACC ↔ RS0 (W-bits)`.
 - **SA**:  Swaps the full contents of **ACC** *with* address register 0 (**RA0**) (full 16-bit), ignoring the **W** size configuration: `ACC ↔ RA0 (16-bits)`.
-- **JAL/JMP**: All jumps will be based on register RA0, but linking would be saved on RA1.
-  - **JAL**: `RA1 ← PC_next`; `PC ← RA0`
+- **JAL/JMP**: Jump target and link register are both **RA0**.
+  - **JAL**: `PC ← RA0` ; `RA0 ← PC_next` (atomic read-before-write)
   - **JMP**: `PC ← RA0`
 - **CFG #imm**: Loads the *immediate* (**#imm**) value into the **CFG** register. The **CFG** register can also be accessed at `CSR1` for reading. *(Useful for changing link width (W) or enabling features without register overhead.)*
 - **CMP**: Computes a subtraction of the form `tmp = ACC − OP2 − (CI ? C_in : 0)` using width `W`, **without modifying `ACC`**. The instruction updates flags as if a `SUB` had been executed:
@@ -204,9 +204,9 @@ MISA-O uses **nibble-based encoding** with variable-length instructions:
     - `f[1]`: **DIR**: Direction (0=Increment, 1=Decrement)
     - `f[0]`: **IDX**: Indexed mode (0=Direct / 1=Indexed)
   - Semantics (width W from LINK, little-endian):
-    - `addr` = `(IDX ? RA0 + RA1 : RA0)`
-      - **Direct** (`IDX=0`): address is `RA0`. Auto-Modify (AM) targets `RA0`.
-      - **Indexed** (`IDX=1`): address is `RA0 + RA1` (RA0 as fixed base, RA1 as 16-bit unsigned offset). Auto-Modify (AM) targets `RA1`.
+    - `addr` = `(IDX ? RA1 + RA0 : RA1)`
+      - **Direct** (`IDX=0`): address is `RA1`. Auto-Modify (AM) targets `RA1`.
+      - **Indexed** (`IDX=1`): address is `RA1 + RA0` (RA1 as fixed base, RA0 as 16-bit unsigned offset). Auto-Modify (AM) targets `RA0`.
     - `stride` = `(W == 16 ? 2 : 1) ; bytes (UL & LK8: 1B; LK16: 2B)`
     - **LD**: 
       - **LK16**: `ACC ← { [addr+1], [addr] } ; little-endian`
@@ -216,11 +216,11 @@ MISA-O uses **nibble-based encoding** with variable-length instructions:
       - **LK16**: `[addr] ← ACC[7:0]; [addr+1] ← ACC[15:8]`
       - **LK8**: `[addr] ← ACC[7:0]`
       - **UL**: `tmp ← [addr]; tmp[3:0] ← ACC[3:0]; [addr] ← tmp`
-    - If AM=1: Enables Auto-Modify mode. The modified register is `RA0` when `IDX=0`, or `RA1` when `IDX=1`. The update timing corresponds to standard stack operations:
+    - If AM=1: Enables Auto-Modify mode. The modified register is `RA1` when `IDX=0`, or `RA0` when `IDX=1`. The update timing corresponds to standard stack operations:
       - DIR=0 (Increment): Performs Post-Increment (Access [addr], then reg ← reg + stride).
       - DIR=1 (Decrement): Performs Pre-Decrement (reg ← reg - stride, then Access [addr]).
     - Flags: **unchanged**.
-- **MCPY**: Copies **|RS1| bytes** from `[RA0]` to `[RA1]`, counter is **signed `RS1`** and always progresses toward zero; ***flags unchanged***.
+- **MCPY**: Copies **|RS1| bytes** from `[RA1]` to `[RA0]`, counter is **signed `RS1`** and always progresses toward zero; ***flags unchanged***.
 - **CSRLD #imm**: Loads CSR into ACC (more details on CSR section).
 - **CSRST #imm**: Write ACC into CSR (more details on CSR section).
 
@@ -391,26 +391,26 @@ No additional function field is currently defined.
 
 | Register | Role                       |
 | -------- | -------------------------- |
-| `RA0`    | Source address             |
-| `RA1`    | Destination address        |
+| `RA1`    | Source address             |
+| `RA0`    | Destination address        |
 | `RS1`    | Signed 16-bit byte counter |
 
 ### Semantics
 
-`MCPY` copies **|RS1| bytes** from `[RA0]` to `[RA1]`.
+`MCPY` copies **|RS1| bytes** from `[RA1]` to `[RA0]`.
 
 The copy direction is determined by the **sign of `RS1`** at execution time:
 
 * **`RS1 > 0`** — *Forward copy*
 
-  * Read from `[RA0]`, write to `[RA1]`
-  * Post-increment `RA0` and `RA1`
+  * Read from `[RA1]`, write to `[RA0]`
+  * Post-increment `RA1` and `RA0`
   * `RS1 ← RS1 − 1`
 
 * **`RS1 < 0`** — *Backward copy*
 
-  * Pre-decrement `RA0` and `RA1`
-  * Read from `[RA0]`, write to `[RA1]`
+  * Pre-decrement `RA1` and `RA0`
+  * Read from `[RA1]`, write to `[RA0]`
   * `RS1 ← RS1 + 1`
 
 * **`RS1 == 0`** — No operation is performed
@@ -422,16 +422,16 @@ The operation completes when `RS1` reaches zero.
 ```c
 if (RS1 > 0) {
     while (RS1 != 0) {
-        *RA1 = *RA0;
-        RA0++;
+        *RA0 = *RA1;
         RA1++;
+        RA0++;
         RS1--;
     }
 } else if (RS1 < 0) {
     while (RS1 != 0) {
-        RA0--;
         RA1--;
-        *RA1 = *RA0;
+        RA0--;
+        *RA0 = *RA1;
         RS1++;
     }
 }
