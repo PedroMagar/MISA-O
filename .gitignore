@@ -1,3 +1,4 @@
 *.vcp
 *.vvp
 *.vcd
+sim/__pycache__/*

@@ -28,7 +28,45 @@ This approach keeps the implementation simple and compact while avoiding the str
 
 The reference implementation (see `design/misa-o_ref.sv`, under construction) is intentionally simple and may not be optimized or synthesizable. It exists to validate the ISA and serve as a playground for experiments.
 
+A **Python simulator** (`sim/`) provides a cycle-accurate software model of the CPU for ISA validation and program development, independently of the Verilog implementation.
+
+| File                         | Description                                                               |
+|------------------------------|---------------------------------------------------------------------------|
+| `sim/cpu.py`                 | `MISAO_CPU` class — full instruction set, disassembler                    |
+| `sim/asm.py`                 | Two-pass assembler — all instructions, directives, branch aliases         |
+| `sim/main.py`                | Interactive debugger (cmd.Cmd) — step, breakpoints, memory dump           |
+| `sim/tui.py`                 | Terminal UI — live register display with nibble-level change highlighting |
+| `sim/examples/hello.asm`     | Sum 1..10 = 55 (LK8 mode)                                                 |
+| `sim/examples/fibonacci.asm` | Iterative fib(10) = 55 (LK8 mode)                                         |
+
 ## How to run
+
+### Python Simulator (recommended for ISA testing)
+
+Requirements: Python 3.6+
+
+**Interactive TUI** — type assembly instructions live, observe register changes:
+```
+python3 sim/tui.py
+python3 sim/tui.py sim/examples/fibonacci.asm
+```
+- Press **Enter** or **+** to step one instruction
+- Type any mnemonic to assemble and execute it immediately
+- Changed nibbles are highlighted; inactive ACC nibbles are dimmed
+- Commands: `reset`, `load`, `run`, `step`, `mem`, `dis`, `setreg`, `break`, `help`
+
+**Command-line debugger:**
+```
+python3 sim/main.py sim/examples/fibonacci.asm --run
+python3 sim/main.py sim/examples/hello.asm
+```
+
+**Assembler only:**
+```
+python3 sim/asm.py sim/examples/fibonacci.asm --hex --symbols
+```
+
+### Verilog Simulation
 
 Dependencies:
 - Icarus Verilog (`iverilog`)
