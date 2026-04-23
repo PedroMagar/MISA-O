@@ -12,7 +12,7 @@ W_NAMES    = ['UL', 'LK8', 'LK16', 'SPE']
 # ─── Disassembler (module-level, used by CPU.disasm) ─────────────────────────
 
 _OPMAP = {
-    (0x0,False):('NOP', None),   (0x0,True): ('RSV',  None),
+    (0x0,False):('NOP', None),   (0x0,True): ('WDR',  None),
     (0x1,False):('ADD', 'wopt'), (0x1,True): ('SUB',  'wopt'),
     (0x9,False):('INC', None),   (0x9,True): ('DEC',  None),
     (0x5,False):('AND', 'wopt'), (0x5,True): ('INV',  None),
@@ -23,8 +23,8 @@ _OPMAP = {
     (0xF,False):('JAL', None),   (0xF,True): ('JMP',  None),
     (0x2,False):('CFG', 'cfg'),  (0x2,True): ('RETI', None),
     (0x6,False):('RACC',None),   (0x6,True): ('RRS',  None),
-    (0xA,False):('RSS', None),   (0xA,True): ('RSA',  None),
-    (0xE,False):('SS',  None),   (0xE,True): ('SA',   None),
+    (0xA,False):('SS0', None),   (0xA,True): ('SS1',  None),
+    (0xE,False):('SA0',  None),   (0xE,True): ('SA1',   None),
     (0x4,False):('LDi', 'w'),    (0x4,True): ('SWI',  None),
     (0xC,False):('XMEM','xmem'), (0xC,True): ('MCPY', None),
     (0x8,False):('XOP', None),   (0x8,True): ('WFI',  None),
@@ -337,18 +337,23 @@ class MISAO_CPU:
                 v = self.acc & 0xFFFF
                 self.acc = ((v >> amt) | (v << (16 - amt))) & 0xFFFF
 
-    def _i_rss(self, ext):      # RSS / RSA
-        if ext: self.ra0, self.ra1 = self.ra1, self.ra0
-        else:   self.rs0, self.rs1 = self.rs1, self.rs0
-
-    def _i_ss(self, ext):       # SS / SA
-        if ext:  # SA — full 16-bit swap ACC ↔ RA0
-            self.acc, self.ra0 = self.ra0, self.acc
-        else:    # SS — W-width swap ACC ↔ RS0
-            mask = self._wmask()
-            av = self.acc & mask;  rv = self.rs0 & mask
+    def _i_ss(self, ext):       # SS0 / SS1
+        mask = self._wmask()
+        av = self.acc & mask
+        if ext:  # SS1 — W-width swap ACC ↔ RS1
+            rv = self.rs1 & mask
+            self.set_acc(rv)
+            self.rs1 = (self.rs1 & (0xFFFF ^ mask)) | av
+        else:    # SS0 — W-width swap ACC ↔ RS0
+            rv = self.rs0 & mask
             self.set_acc(rv)
             self.rs0 = (self.rs0 & (0xFFFF ^ mask)) | av
+
+    def _i_sa(self, ext):       # SA0 / SA1
+        if ext:  # SA1 — full 16-bit swap ACC ↔ RA1
+            self.acc, self.ra1 = self.ra1, self.acc
+        else:    # SA0 — full 16-bit swap ACC ↔ RA0
+            self.acc, self.ra0 = self.ra0, self.acc
 
     def _i_ldi(self, ext):      # LDi / SWI
         if not ext:
@@ -412,7 +417,7 @@ class MISAO_CPU:
 
     # ── Dispatch ─────────────────────────────────────────────────────────────
     _DISPATCH = {
-        0x0: lambda s,e: None,        # NOP
+        0x0: lambda s,e: s.csrs.__setitem__(4, 0) if e else None, # NOP / WDR
         0x1: lambda s,e: s._i_add(e),
         0x9: lambda s,e: s._i_incdec(e),
         0x5: lambda s,e: s._i_and(e),
@@ -423,8 +428,8 @@ class MISAO_CPU:
         0xF: lambda s,e: s._i_jal(e),
         0x2: lambda s,e: s._i_cfg(e),
         0x6: lambda s,e: s._i_racc(e),
-        0xA: lambda s,e: s._i_rss(e),
-        0xE: lambda s,e: s._i_ss(e),
+        0xA: lambda s,e: s._i_ss(e),
+        0xE: lambda s,e: s._i_sa(e),
         0x4: lambda s,e: s._i_ldi(e),
         0xC: lambda s,e: s._i_xmem(e),
     }
@@ -466,8 +471,7 @@ class MISAO_CPU:
             f"CI={self.CI:d} IMM={self.IMM:d} SIGN={self.SIGN:d} IE={self.IE:d}\n"
             f"  FLAGS  C={self.c} Z={self.z} N={self.n} V={self.v}  "
             f"IA={self.ia:02X}h IAR={self.iar:02X}h\n"
-            f"  GPR1={self.csrs[2]:04X}h  GPR2={self.csrs[3]:04X}h  "
-            f"GPR3={self.csrs[4]:04X}h   cycles={self.cycles}"
+            f"  EVTCTRL={self.csrs[2]:04X}h  TIMER={self.csrs[4]:04X}h   cycles={self.cycles}"
         )
 
     def dump_mem(self, byte_addr: int, length: int = 64) -> str:

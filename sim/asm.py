@@ -35,9 +35,9 @@ W_NIBBLES = [1, 2, 4, 4]
 
 # Fixed instruction sizes in nibbles (no inline immediate)
 _FIXED_SIZE = {
-    'NOP':  1, 'INC':  1, 'SHL': 1, 'RSS': 1, 'SS':  1, 'JAL': 1, 'RACC': 1, 'XOP': 1,
-    'DEC':  2, 'SHR':  2, 'INV': 2, 'RSA': 2, 'SA':  2, 'JMP': 2, 'RRS':  2,
-    'RETI': 2, 'SWI':  2, 'WFI': 2, 'MCPY': 2,
+    'NOP':  1, 'INC':  1, 'SHL': 1, 'SS0': 1, 'SA0':  1, 'JAL': 1, 'RACC': 1, 'XOP': 1,
+    'DEC':  2, 'SHR':  2, 'INV': 2, 'SS1': 2, 'SA1':  2, 'JMP': 2, 'RRS':  2,
+    'RETI': 2, 'SWI':  2, 'WFI': 2, 'MCPY': 2, 'WDR': 2,
     'BRC':  4,
     'CFG':  3,   # opcode + 2 nibbles (8-bit immediate)
     'XMEM': 2,   # opcode + 1 nibble func
@@ -63,15 +63,16 @@ _OPCODES = {
     # simple (1 nibble)
     'NOP':  [0x0], 'INC':  [0x9], 'AND':  [0x5],
     'SHL':  [0x3], 'OR':   [0xD], 'BRC':  [0x7],
-    'JAL':  [0xF], 'CFG':  [0x2], 'RSS':  [0xA],
-    'SS':   [0xE], 'LDi':  [0x4], 'XMEM': [0xC],
+    'JAL':  [0xF], 'CFG':  [0x2], 'SS0':  [0xA],
+    'SA0':   [0xE], 'LDi':  [0x4], 'XMEM': [0xC],
     'RACC': [0x6], 'ADD':  [0x1],
     # XOP prefix (2 nibbles)
     'DEC':  [0x8, 0x9], 'INV':  [0x8, 0x5], 'SHR':  [0x8, 0x3],
     'XOR':  [0x8, 0xD], 'CMP':  [0x8, 0x7], 'JMP':  [0x8, 0xF],
-    'RETI': [0x8, 0x2], 'RRS':  [0x8, 0x6], 'RSA':  [0x8, 0xA],
-    'SA':   [0x8, 0xE], 'SWI':  [0x8, 0x4], 'MCPY': [0x8, 0xC],
+    'RETI': [0x8, 0x2], 'RRS':  [0x8, 0x6], 'SS1':  [0x8, 0xA],
+    'SA1':   [0x8, 0xE], 'SWI':  [0x8, 0x4], 'MCPY': [0x8, 0xC],
     'WFI':  [0x8, 0x8], 'SUB':  [0x8, 0x1], 'TST':  [0x8, 0xB],
+    'WDR':  [0x8, 0x0],
     'BTST': [0xB],
     # LK16 CSR access (RACC/RRS opcode in LK16 mode)
     'CSRLD': [0x6],
@@ -424,9 +425,9 @@ class Assembler:
             return emit(0x7, cond, lo, hi)
 
         # ── Fixed-size / no-operand instructions ──
-        if mnem in ('NOP', 'INC', 'SHL', 'RSS', 'SS', 'JAL', 'RACC', 'XOP',
-                    'DEC', 'SHR', 'INV', 'RSA', 'SA',  'JMP', 'RRS',
-                    'RETI', 'SWI', 'WFI', 'MCPY'):
+        if mnem in ('NOP', 'INC', 'SHL', 'SS0', 'SA0', 'JAL', 'RACC', 'XOP',
+                    'DEC', 'SHR', 'INV', 'SS1', 'SA1',  'JMP', 'RRS',
+                    'RETI', 'SWI', 'WFI', 'MCPY', 'WDR'):
             return emit(*_OPCODES[mnem])
 
         # ── CFG #imm8 ──

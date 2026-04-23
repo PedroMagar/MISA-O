@@ -231,9 +231,9 @@ class CodeGeneratorRA1:
         self.emit("    CFG #0x0A\t; IMM=1")
         self.emit("    LDi #0xFFFE")
         self.emit("    CFG #0x02\t; IMM=0")
-        self.emit("    RSA\t\t; RA1 <- 0xFFFE")
+        self.emit("    SA1\t\t; RA1 <- 0xFFFE")
         self.emit("    LDi #main")
-        self.emit("    SA")
+        self.emit("    SA0")
         self.emit("    JAL\t\t; Call main")
         self.emit("DONE:")
         self.emit("    WFI\t\t; halt")
@@ -255,9 +255,9 @@ class CodeGeneratorRA1:
         
         # Prologue
         self.emit("    ; PROLOGUE: Save RA0 (return address)")
-        self.emit("    SA\t\t; ACC <- RA0")
+        self.emit("    SA0\t\t; ACC <- RA0")
         self.emit("    XMEM #0b1110\t; Push ACC to [RA1]")
-        self.emit("    SA\t\t; Restore ACC (optional)")
+        self.emit("    SA0\t\t; Restore ACC (optional)")
         
         if len(self.locals) > 0:
             self.emit("    ; Allocate {} locals".format(len(self.locals)))
@@ -277,9 +277,9 @@ class CodeGeneratorRA1:
                 self.emit("    XMEM #0b0010\t; Pop to ACC (discard)")
         
         self.emit("    ; EPILOGUE: Restore RA0")
-        self.emit("    SA\t\t; Save ACC (return value)")
+        self.emit("    SA0\t\t; Save ACC (return value)")
         self.emit("    XMEM #0b0010\t; Pop to ACC")
-        self.emit("    SA\t\t; RA0 <- return address, ACC <- return value")
+        self.emit("    SA0\t\t; RA0 <- return address, ACC <- return value")
         self.emit("    JMP\t\t; Return")
         self.emit("")
 
@@ -347,7 +347,7 @@ class CodeGeneratorRA1:
         self.emit("    CFG #0x0A\t; IMM=1")
         self.emit("    LDi #{}\t; offset".format(offset))
         self.emit("    CFG #0x02\t; IMM=0")
-        self.emit("    SA\t\t; RA0 <- offset")
+        self.emit("    SA0\t\t; RA0 <- offset")
         self.emit("    XMEM #0b0010\t; Pop value back to ACC")
         self.emit("    XMEM #0b1001\t; Store ACC to [RA1+RA0]")
 
@@ -362,7 +362,7 @@ class CodeGeneratorRA1:
             self.emit("    CFG #0x0A\t; IMM=1")
             self.emit("    LDi #{}\t; offset".format(offset))
             self.emit("    CFG #0x02\t; IMM=0")
-            self.emit("    SA\t\t; RA0 <- offset")
+            self.emit("    SA0\t\t; RA0 <- offset")
             self.emit("    XMEM #0b0001\t; ACC <- [RA1+RA0]")
         elif isinstance(node, FunctionCall):
             self.emit("    ; Call {}".format(node.name))
@@ -373,7 +373,7 @@ class CodeGeneratorRA1:
             self.emit("    CFG #0x0A\t; IMM=1")
             self.emit("    LDi #{}\t; function address".format(node.name))
             self.emit("    CFG #0x02\t; IMM=0")
-            self.emit("    SA\t\t; RA0 <- func addr")
+            self.emit("    SA0\t\t; RA0 <- func addr")
             self.emit("    JAL")
             if len(node.args) > 0:
                 self.emit("    ; Pop args")
@@ -395,7 +395,7 @@ class CodeGeneratorRA1:
             self.gen_expr(node.right)
             # Now ACC has right side. Stack has left side.
             # We want Left op Right.
-            self.emit("    SS\t\t; RS0 <- right side")
+            self.emit("    SS0\t\t; RS0 <- right side")
             self.emit("    XMEM #0b0010\t; ACC <- left side")
             # Now ACC has left, RS0 has right.
             if node.op == '+': self.emit("    ADD")
@@ -407,7 +407,7 @@ class CodeGeneratorRA1:
         self.gen_expr(node.left)
         self.emit("    XMEM #0b1110\t; Push left")
         self.gen_expr(node.right)
-        self.emit("    SS\t\t; RS0 <- right")
+        self.emit("    SS0\t\t; RS0 <- right")
         self.emit("    XMEM #0b0010\t; ACC <- left")
         self.emit("    CMP\t\t; left - right")
         

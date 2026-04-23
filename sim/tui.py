@@ -161,8 +161,8 @@ def _acc_row(snap, chg, w_mode):
 def _snap(cpu):
     return {
         'cfg':  cpu.cfg,       'ia':   cpu.ia,       'iar':  cpu.iar,
-        'gpr1': cpu.csrs[2],   'gpr2': cpu.csrs[3],  'gpr3': cpu.csrs[4],
-        'pc':   cpu.pc,        'addr': cpu.ra0,       'mem':  cpu._rw(cpu.ra0),
+        'evt':  cpu.csrs[2],   'tim':  cpu.csrs[4],  'tcmp': cpu.csrs[5],
+        'pc':   cpu.pc,        'addr': cpu.ra0,      'mem':  cpu._rw(cpu.ra0),
         'rs0':  cpu.rs0,       'rs1':  cpu.rs1,       'acc':  cpu.acc,
         'ra1':  cpu.ra1,       'ra0':  cpu.ra0,
         'c': cpu.c, 'z': cpu.z, 'n': cpu.n, 'v': cpu.v,
@@ -172,7 +172,7 @@ def _diff(before, after):
     changed = set()
     widths = {
         'cfg':2, 'ia':2, 'iar':2,
-        'gpr1':4, 'gpr2':4, 'gpr3':4,
+        'evt':4, 'tim':4, 'tcmp':4,
         'pc':4, 'addr':4, 'mem':4,
         'rs0':4, 'rs1':4, 'acc':4, 'ra1':4, 'ra0':4,
     }
@@ -210,15 +210,15 @@ def _build_display(cpu, snap, chg):
     R.append(_c8('CFG', 'cfg', snap['cfg'], chg))
     R.append(_B8  + _BT2 + _BT3)
     R.append(_BLK8 +
-             _c16('GPR1','gpr1',snap['gpr1'],chg,6) +
+             _c16(' EVT','evt',snap['evt'],chg,6) +
              _c16('PC',  'pc',  snap['pc'],  chg,5))
     R.append(_B8  + _BT2 + _BT3)
     R.append(_c8(' IA', 'ia', snap['ia'], chg) +
-             _c16('GPR2','gpr2',snap['gpr2'],chg,6) +
+             _c16(' TIM','tim',snap['tim'],chg,6) +
              _c16('ADDR','addr',snap['addr'],chg,5))
     R.append(_B8  + _BT2 + _BT3)
     R.append(_c8('IAR', 'iar', snap['iar'], chg) +
-             _c16('GPR3','gpr3',snap['gpr3'],chg,6) +
+             _c16('TCMP','tcmp',snap['tcmp'],chg,6) +
              _c16(' I/O','mem', snap['mem'], chg,5))
     R.append(_B8  + _BT2 + _BT3)
 
@@ -384,7 +384,7 @@ _ALU_HELP = """\
   Immediate width matches W mode:  UL=4b  LK8=8b  LK16=16b
 
   Extended (XOP) variants -- type the full mnemonic or 'XOP BASE':
-    SUB INC DEC INV XOR SHR BTST CMP JMP RSA SA RRS RETI WFI
+    SUB INC DEC INV XOR SHR BTST CMP JMP SS1 SA1 RRS RETI WFI WDR
 """
 
 _RS_HELP = """\
@@ -394,7 +394,7 @@ _RS_HELP = """\
 
   Instruction  RS0 role
   -----------  --------------------------------------------------
-  SS           ACC <-> RS0  (W-bits wide, atomic swap)
+  SS0          ACC <-> RS0  (W-bits wide, atomic swap)
   RRS          RS0 rotated right by W bits within 16-bit
   ADD/SUB/AND/OR/XOR/CMP/TST/BTST  op2 = RS0 when IMM=0
 
@@ -402,7 +402,7 @@ _RS_HELP = """\
 
   Instruction  RS1 role
   -----------  --------------------------------------------------
-  RSS          RS0 <-> RS1  (full 16-bit swap)
+  SS1          ACC <-> RS1  (W-bits wide, atomic swap)
   MCPY         byte count  (signed: positive=forward, negative=backward)
                RS1 is cleared to 0 after the copy
 """
@@ -412,8 +412,8 @@ _RA_HELP = """\
 
   Instruction  Role
   -----------  --------------------------------------------------
-  SA           ACC <-> RA0  (full 16-bit swap)
-  RSA          RA0 <-> RA1  (full 16-bit swap)
+  SA0          ACC <-> RA0  (full 16-bit swap)
+  SA1          ACC <-> RA1  (full 16-bit swap)
 
  RA1  --  jump/link target, memory base address
  RA0  --  memory offset / swap target for SA
@@ -428,15 +428,14 @@ _RA_HELP = """\
 
   Instruction  RA0 role
   -----------  --------------------------------------------------
-  SA           ACC <-> RA0  (full 16-bit swap)
+  SA0          ACC <-> RA0  (full 16-bit swap)
   XMEM IDX=1   offset added to RA1; AM modifies RA0
   MCPY         destination address (modified during copy)
 
  Loading RA0 / RA1 (no direct load instruction -- route through ACC):
    CFG #0x02        ; LK16 (full 16-bit)
    LDi #0x0200      ; ACC = 0x0200
-   SA               ; RA0 = 0x0200
-   RSA              ; RA1 = 0x0200, RA0 = previous RA1
+   SA1              ; RA1 = 0x0200 (ACC previous RA1)
 """
 
 _HELP = """\
@@ -456,8 +455,8 @@ _HELP = """\
   JMP                 PC <- RA1
   CFG  #imm8          Load CFG register (W[1:0], SIGN[2], IMM[3], IE[4], CI[5])
   LDi  #imm           ACC = immediate (W-bit wide)
-  SS                  ACC <-> RS0 (W bits)     SA     ACC <-> RA0 (16-bit)
-  RSS                 RS0 <-> RS1              RSA    RA0 <-> RA1
+  SS0                 ACC <-> RS0 (W bits)     SA0    ACC <-> RA0 (16-bit)
+  SS1                 ACC <-> RS1 (W bits)     SA1    ACC <-> RA1 (16-bit)
   RACC                Rotate ACC (non-LK16)    RRS    Rotate RS0 (non-LK16)
   CSRLD #i  CSRST #i  CSR access (LK16 mode only)
   XMEM #f             Memory op; f=OP(3)|AM(2)|DIR(1)|IDX(0)

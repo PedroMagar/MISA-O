@@ -356,9 +356,9 @@ class Debugger(cmd.Cmd):
     def do_csrs(self, line: str):
         """csrs  — dump all CSR values."""
         cpu = self.cpu
-        names = ['CPUID','CORECFG','GPR1','GPR2','GPR3',
-                 'TIMER','TIMERCMP','EVTCTRL','INTADDR',
-                 'CSR9','CSR10','CSR11','CSR12','CSR13','CSR14','CSR15']
+        names = ['CPUID','CORECFG','EVTCTRL','INTADDR','TIMER',
+                 'TIMERCMP','CSR6','CSR7','CSR8','CSR9','CSR10',
+                 'CSR11','CSR12','CSR13','CSR14','CSR15']
         print('CSR Bank:')
         for i in range(16):
             val  = cpu.csr_r(i)
