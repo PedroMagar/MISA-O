@@ -6,7 +6,7 @@ A typical debug monitor runs as the unified ISR entry (`IA<<8 + 0x10`) and uses 
 
 #### Single-step via EVTCTRL.SS_IE / SS_P
 
-For implementations that support the Debug Profile, two bits in `EVTCTRL` (CSR 7) control single-step execution:
+For implementations that support the Debug Profile, two bits in `EVTCTRL` (CSR 2) control single-step execution:
 
 | Bit | Name  | Byte      | Access | Description                          |
 |-----|-------|-----------|--------|--------------------------------------|

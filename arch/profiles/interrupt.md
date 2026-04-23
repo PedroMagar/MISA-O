@@ -62,7 +62,7 @@ After `RETI`, interrupt enable (`CFG.IE`) follows the restored configuration sta
 
 ### Interrupt cause
 
-The ISR can determine which interrupt fired by reading **EVTCTRL** (CSR 7), specifically its high byte (status, R/W1C):
+The ISR can determine which interrupt fired by reading **EVTCTRL** (CSR 2), specifically its high byte (status, R/W1C):
 
 | Bit | Name  | Meaning                    |
 | --- | ----- | -------------------------- |
@@ -74,7 +74,7 @@ The ISR reads `EVTCTRL`, inspects the pending bits, dispatches accordingly, and 
 
 Software must clear pending bits **before** re-enabling `CFG.IE` to avoid re-entering the ISR for the same event.
 
-See **[csrs.md — CSR7](arch/csrs.md)** for the full EVTCTRL layout.
+See **[csrs.md — CSR3](arch/csrs.md)** for the full EVTCTRL layout.
 
 ### Design rationale
 
@@ -114,7 +114,7 @@ The interrupt frame saves the minimum state required to resume correctly; softwa
     - The CPU **saves the minimal architectural state required for resumption: PC_next, CFG, FLAGS, ACC, RA0, IA and IAR** at fixed offsets in page `ia` (see layout below). All other registers are software-managed and must be explicitly saved by the ISR if needed.
     - Latches `IAR ← IA`, **clears IE**, and
     - **jumps to** `IA<<8 + 0x10` (the ISR entry).
-    - Interrupt address register (`IA`) is mapped at `CSR 8`.
+    - Interrupt address register (`IA`) is mapped at `CSR 3`.
   - **WFI\***: Wait-For-Interrupt makes the processor sleep until an interrupt sign is received.
   - **SWI\***: Triggers a software interrupt; flow identical to an external IRQ: autosave on the ia page, latches `IAR←IA`, clears IE (`IE←0`) and jumps to `IA<<8 + 0x10`.
   - **RETI\***: Restores state from the *IAR* page and resumes execution.

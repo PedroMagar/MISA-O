@@ -519,18 +519,15 @@ Two implementation profiles are envisaged:
 
 ### CSR Map
 
-| Idx | Name     | Description                                        | Profile   |
-|-----|----------|----------------------------------------------------|-----------|
-| 0   | CPUID    | CPUID                                              | required  |
-| 1   | CORECFG  | Core configuration and flags (CFG + flags)         | required  |
-| 2   | GPR1     | General-Purpose Register                           | baseline  |
-| 3   | GPR2     | General-Purpose Register                           | baseline  |
-| 4   | GPR3     | General-Purpose Register                           | baseline  |
-| 5   | TIMER    | Cycle/instruction counter (16-bit free-running).   | time      |
-| 6   | TIMERCMP | Comparison value for the Timer.                    | time      |
-| 7   | EVTCTRL  | Unified control: Status, Masks, and Watchdog.      | baseline  |
-| 8   | INTADDR  | Interrupt base page (IA alias)                     | interrupt |
-| 9–15| RSV      | Reserved for extensions                            | —         |
+| Idx  | Name     | Description                                        | Profile   |
+|------|----------|----------------------------------------------------|-----------|
+| 0    | CPUID    | CPUID                                              | required  |
+| 1    | CORECFG  | Core configuration and flags (CFG + flags)         | required  |
+| 2    | EVTCTRL  | Unified control: Status, Masks, and Watchdog.      | baseline  |
+| 3    | INTADDR  | Interrupt base page (IA alias)                     | interrupt |
+| 4    | TIMER    | Cycle/instruction counter (16-bit free-running).   | time      |
+| 5    | TIMERCMP | Comparison value for the Timer.                    | time      |
+| 6–15 | RSV      | Reserved for extensions                            | —         |
 
 Note: EVTCTRL is present in baseline even if the Interrupt Profile is not implemented; fields related to interrupts read as zero when the profile is absent.
 
@@ -595,13 +592,5 @@ Entries may be changed, merged, promoted or removed without affecting ISA compat
       RS0 | 0 0 0 0   0 0 0 0   0 0 0 0   0 0 0 0 |
           |---------------------------------------|
       RS1 | 0 0 0 0   0 0 0 0   0 0 0 0   0 0 0 0 |
-          |---------------------------------------| 
-
-          |---------------------------------------|
-     GPR1 | 0 0 0 0   0 0 0 0   0 0 0 0   0 0 0 0 |
-          |---------------------------------------|
-     GPR2 | 0 0 0 0   0 0 0 0   0 0 0 0   0 0 0 0 |
-          |---------------------------------------| 
-     GPR3 | 0 0 0 0   0 0 0 0   0 0 0 0   0 0 0 0 |
           |---------------------------------------| 
 ```

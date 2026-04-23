@@ -2,7 +2,7 @@
 
 MISA-O is designed to support efficient compilation of high-level languages, particularly C, through a well-defined calling convention and architectural features that minimize overhead in function calls, stack management, and register allocation.
 
-This document outlines the **standard MISA-O calling convention**, which achieves maximum code density using **0 General Purpose Registers (GPRs)** for core stack management.
+This document outlines the **standard MISA-O calling convention** for efficient function calls and stack management.
 
 ---
 
@@ -18,7 +18,7 @@ MISA-O uses a highly efficient register model centered around the native stack c
 | **RS0**  | A0    | Scratch / Temp | General use |
 | **RS1**  | A1    | Scratch / Temp | General use |
 
-**Rationale:** By dedicating `RA1` strictly as the Stack Pointer, MISA-O achieves 1-cycle push/pops via `XMEM` auto-modify features, completely eliminating the need for GPRs (like CSR2) to manage the stack.
+**Rationale:** By dedicating `RA1` strictly as the Stack Pointer, MISA-O achieves 1-cycle push/pops via `XMEM` auto-modify features.
 
 ---
 
@@ -121,22 +121,22 @@ complex:
 
 ### Profile Requirements for C Compatibility
 
-| Profile | GPR Support | C Support | Notes |
-|---------|-------------|-----------|-------|
-| **Baseline** | 0 GPRs | ✅ Yes | **No GPRs required for C!** |
-| **Advanced** | Custom CSRs | ✅ Yes | Free CSR space for domain specific extensions |
+| Profile | C Support | Notes |
+|---------|-----------|-------|
+| **Baseline** | ✅ Yes | Full re-entrant C support |
+| **Complete** | ✅ Yes | Additional CSR extensions available |
 
-By utilizing `RA1` as the standard Stack Pointer, MISA-O requires **zero GPRs** to fully support re-entrant C compilation, nested loops, recursion, and variable spilling.
+`RA1` as the standard Stack Pointer fully supports re-entrant C compilation, nested loops, recursion, and variable spilling.
 
 ---
 
 ### Code Density Analysis
 
-| Macro | RA1 as SP (New) | Old CSR2 Convention | Delta |
-|-------|-----------------|---------------------|-------|
-| **PUSH** | 1 | 7 | **−6 instructions** |
-| **POP** | 1 | 8 | **−7 instructions** |
-| **PROLOGUE_NONLEAF** | 3 | 7 | **−4 instructions** |
-| **EPILOGUE_NONLEAF** | 4 | 8 | **−4 instructions** |
+| Macro | Instructions |
+|-------|-------------|
+| **PUSH** | 1 |
+| **POP** | 1 |
+| **PROLOGUE_NONLEAF** | 3 |
+| **EPILOGUE_NONLEAF** | 4 |
 
-**Conclusion:** The `RA1` SP calling convention produces **drastically smaller code** (up to 30% reduction in instruction count across benchmarks) and establishes itself as the definitive standard for MISA-O high-level language targeting, fundamentally reducing hardware requirements.
+**Conclusion:** The `RA1` SP calling convention is the standard for MISA-O high-level language targeting, achieving minimal instruction overhead for stack operations.

@@ -49,14 +49,11 @@ Three implementation profiles are defined:
 | ---- | -------- | -------------------------------------------- | --------- |
 | 0    | CPUID    | Implementation and capability identification | required  |
 | 1    | CORECFG  | Core configuration and architectural flags   | required  |
-| 2    | GPR1     | General-purpose register                     | baseline  |
-| 3    | GPR2     | General-purpose register                     | baseline  |
-| 4    | GPR3     | General-purpose register                     | baseline  |
-| 5    | TIMER    | Free-running 16-bit counter                  | time      |
-| 6    | TIMERCMP | Timer comparison value                       | time      |
-| 7    | EVTCTRL  | Interrupt, event, and watchdog control       | baseline  |
-| 8    | INTADDR  | Interrupt base address (IA alias)            | interrupt |
-| 9–15 | RSV      | Reserved for extensions                      | -         |
+| 2    | EVTCTRL  | Interrupt, event, and watchdog control       | baseline  |
+| 3    | INTADDR  | Interrupt base address (IA alias)            | interrupt |
+| 4    | TIMER    | Free-running 16-bit counter                  | time      |
+| 5    | TIMERCMP | Timer comparison value                       | time      |
+| 6–15 | RSV      | Reserved for extensions                      | -         |
 
 Note: **EVTCTRL** is present in the baseline profile even if the Interrupt Profile is not implemented. Interrupt-related fields read as zero when the profile is absent.
 
@@ -111,54 +108,7 @@ Writes to CORECFG take effect immediately after the instruction retires. No impl
 
 ---
 
-### CSR2–CSR4 – GPR (General-Purpose Registers)
-
-CSRs 2–4 provide up to three general-purpose software-visible registers.
-
-These registers are intended to assist calling conventions, reduce memory traffic, and enable more efficient compilation of non-leaf functions. They are accessed exclusively through CSR instructions and do not alter the core register file or datapath.
-
-| Idx | Name     | Description                                        | Profile   |
-|-----|----------|----------------------------------------------------|-----------|
-| 2   | GPR1     | General-Purpose Register                           | baseline  |
-| 3   | GPR2     | General-Purpose Register                           | baseline  |
-| 4   | GPR3     | General-Purpose Register                           | baseline  |
-
-**Typical Usage:**
-- GPR1: Stack Pointer (SP) or callee-saved
-- GPR2: Temp / staging register
-- GPR3: Link Register (LR) or callee-saved
-
-See **[Calling Convention](arch/calling_convention.md)** section for details.
-
----
-
-### CSR5 – TIMER (Monotonic Counter)
-
-A 16-bit free-running counter intended for ordering, delays, and scheduling.
-
-* **Read**: Returns the current value
-* **Write**: Loads a new value
-* **Overflow**: Wraps from `0xFFFF` to `0x0000`
-
-Implementations may increment TIMER per retired instruction or per cycle. Software must treat TIMER as an opaque monotonic counter and must not assume a fixed relationship to wall-clock time.
-
----
-
-### CSR6 – TIMERCMP (Timer Compare)
-
-Holds the comparison value for TIMER.
-
-When TIMER transitions to equality with TIMERCMP:
-
-* The **T_P** (Timer Pending) bit in EVTCTRL is set
-* If watchdog mode is enabled, a reset is triggered
-* Otherwise, a timer interrupt may be raised if enabled
-
-Pending status is cleared explicitly by software.
-
----
-
-### CSR7 – EVTCTRL (Event, Interrupt, and Watchdog Control)
+### CSR2 – EVTCTRL (Event, Interrupt, and Watchdog Control)
 
 Consolidates interrupt enables, pending status, and watchdog policy.
 
@@ -190,20 +140,48 @@ Interrupt delivery sequence:
 
 ---
 
-### CSR8 – INTADDR (Interrupt Base Address)
+### CSR3 – INTADDR (Interrupt Base Address)
 
 Alias of the architectural **IA** register.
 
 * **[7:0]**  Interrupt base page
 * **[15:8]** Reserved
 
-CSRLD #8 reads IA; CSRST #8 writes IA using `ACC[7:0]`.
+CSRLD #3 reads IA; CSRST #3 writes IA using `ACC[7:0]`.
 
 ---
 
-### CSR9–CSR15 – Reserved
+### CSR4 – TIMER (Monotonic Counter)
+
+A 16-bit free-running counter intended for ordering, delays, and scheduling.
+
+* **Read**: Returns the current value
+* **Write**: Loads a new value
+* **Overflow**: Wraps from `0xFFFF` to `0x0000`
+
+Implementations may increment TIMER per retired instruction or per cycle. Software must treat TIMER as an opaque monotonic counter and must not assume a fixed relationship to wall-clock time.
+
+---
+
+### CSR5 – TIMERCMP (Timer Compare)
+
+Holds the comparison value for TIMER.
+
+When TIMER transitions to equality with TIMERCMP:
+
+* The **T_P** (Timer Pending) bit in EVTCTRL is set
+* If watchdog mode is enabled, a reset is triggered
+* Otherwise, a timer interrupt may be raised if enabled
+
+Pending status is cleared explicitly by software.
+
+---
+
+### CSR6–CSR15 – Reserved
 
 Reserved for future profiles and implementation-defined extensions.
+
+Unimplemented slots read as `0` and ignore writes.
 
 ---
 
@@ -213,5 +191,5 @@ Reserved for future profiles and implementation-defined extensions.
 * CSR width: **16-bit**
 * Access mechanism: **CSRLD / CSRST (LK16 only)**
 * Required CSRs: **CPUID, CORECFG**
-* Baseline CSRs: **GPR1–3, EVTCTRL**
-* Profile-driven CSRs: **TIMER, TIMERCMP, INTADDR**
+* Baseline CSRs: **EVTCTRL**
+* Profile-driven CSRs: **INTADDR, TIMER, TIMERCMP**
