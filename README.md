@@ -138,16 +138,16 @@ The following table lists the architecture instructions:
 | 1101 |OR        |XOR       | OR / XOR                                             |
 | 0011 |SHL       |SHR       | Shift Left / Right                                   |
 | 1011 |BTST      |TST       | Bit Test / Test                                      |
-| 0111 |**BRC**   |CMP       | Branch Relative Conditional / Compare                |
+| 0111 |BRC       |CMP       | Branch Relative Conditional / Compare                |
 | 1111 |JAL       |JMP       | Jump and Link / Jump                                 |
 | 0010 |CFG       |**RSV**   | Load Configuration / Reserved for extensions         |
-| 0110 |RACC      |RRS       | Rotate Accumulator/ Rotate Register Source 0         |
-| 1010 |RSS       |RSA       | Rotate Stack Source/Address                          |
-| 1110 |SS        |SA        | Swap Accumulator with Source/Address                 |
+| 0110 |RACC      |RRS       | Rotate Accumulator / Rotate Register Source 0        |
+| 1010 |**SS0**   |**SS1**   | Swap Accumulator with Source 0/1                     |
+| 1110 |**SA0**   |**SA1**   | Swap Accumulator with Address 0/1                    |
 | 0100 |LDi       |**RSV**   | Load Immediate / Reserved for extensions             |
-| 1100 |XMEM      |**MCPY**  | Extended Memory Operations / Reserved for extensions |
+| 1100 |XMEM      |MCPY      | Extended Memory Operations / Reserved for extensions |
 | 1000 |XOP       |**RSV**   | Extended Operations / Reserved for extensions        |
-| 0000 |NOP       |**RSV**   | No Operation / Reserved for extensions               |
+| 0000 |NOP       |**WDR**   | No Operation / Watchdog Reset                        |
 
 Notes:
 - \* : Not mandatory instructions.
@@ -184,7 +184,7 @@ MISA-O uses **nibble-based encoding** with variable-length instructions:
 - Instructions are **nibble-aligned** (not byte-aligned).
 - Nibble order within a byte is fixed as low first
 - PC addresses instruction nibbles directly.
-- Simple operations (ADD, SS, etc) can pair in 1 byte.
+- Simple operations (ADD, SS0, etc) can pair in 1 byte.
 - Complex operations (CFG, LDi) use 2-3 bytes.
 - When `CFG.IMM` is enabled, relevant instructions (ADD, SUB, AND, OR, XOR, TST) increase by W-size to accommodate the immediate operand (`BTST` always uses a 4-bit immediate, since it is sufficient to address the 16 positions of the register).
 
@@ -212,10 +212,10 @@ MISA-O uses **nibble-based encoding** with variable-length instructions:
 - **INC/DEC**: Increment/Decrement ACC by 1; updates `C` with carry-out/borrow; carry-in is always treated as 0.
 - **SHL/SHR**: Shift ACC Left/Right by 1 bit; the outgoing bit goes to Carry, and the vacated side is filled with 0. Updates `C` with the shifted-out bit and updates `Z`/`N` from the result. Does not update `V`.
 - **RACC/RRS**: Rotate Accumulator / Register Source - It rotates ACC/RS0 by W bits (4/8), wrapping around; in LK16, the RACC/RRS opcode encoding is repurposed as Special Instructions (SI).
-- **RSS**: Swap `RS0` ↔ `RS1`; ***flags unchanged***.
-- **RSA**: Swap `RA0` ↔ `RA1`; ***flags unchanged***.
-- **SS**:  Swaps the contents of **ACC** *with* source operand register 0 (**RS0**), respecting the active **W** (word-size) configuration: `ACC ↔ RS0 (W-bits)`.
-- **SA**:  Swaps the full contents of **ACC** *with* address register 0 (**RA0**) (full 16-bit), ignoring the **W** size configuration: `ACC ↔ RA0 (16-bits)`.
+- **SS1**: Swaps the contents of **ACC** *with* source operand register 1 (**RS1**), respecting the active **W** (word-size) configuration: `ACC ↔ RS1 (W-bits)`; ***flags unchanged***.
+- **SA1**: Swaps the full contents of **ACC** *with* address register 1 (**RA1**) (full 16-bit), ignoring the **W** size configuration: `ACC ↔ RA1 (16-bits)`; ***flags unchanged***.
+- **SS0**: Swaps the contents of **ACC** *with* source operand register 0 (**RS0**), respecting the active **W** (word-size) configuration: `ACC ↔ RS0 (W-bits)`.
+- **SA0**: Swaps the full contents of **ACC** *with* address register 0 (**RA0**) (full 16-bit), ignoring the **W** size configuration: `ACC ↔ RA0 (16-bits)`.
 - **JAL/JMP**: Jump target and link register are both **RA0**.
   - **JAL**: `PC ← RA0` ; `RA0 ← PC_next` (atomic read-before-write)
   - **JMP**: `PC ← RA0`
@@ -259,6 +259,7 @@ MISA-O uses **nibble-based encoding** with variable-length instructions:
       - DIR=1 (Decrement): Performs Pre-Decrement (reg ← reg - stride, then Access [addr]).
     - Flags: **unchanged**.
 - **MCPY**: Copies **|RS1| bytes** from `[RA1]` to `[RA0]`, counter is **signed `RS1`** and always progresses toward zero; ***flags unchanged***.
+- **WDR**: Resets TIMER to `0x0000`, restarting the watchdog countdown. Does not modify any register, flag, or CSR other than TIMER. If `EVTCTRL.WDOG` is clear, WDR has no observable effect.
 - **CSRLD #imm**: Loads CSR into ACC (more details on CSR section).
 - **CSRST #imm**: Write ACC into CSR (more details on CSR section).
 

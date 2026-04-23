@@ -118,7 +118,7 @@ Consolidates interrupt enables, pending status, and watchdog policy.
 * [1] EXT_IE - External interrupt enable
 * [2] T_IE   - Timer interrupt enable
 * [3] SS_IE  - Single-step enable (Debug Profile; RAZ/WI if Debug Profile absent)
-* [7] WDOG   - Watchdog mode. When set, a timer match (TIMER == TIMERCMP) causes a core reset instead of raising a timer interrupt.
+* [7] WDOG   - Watchdog mode. When set, a timer match (TIMER == TIMERCMP) causes a core reset instead of raising a timer interrupt. Software must periodically execute `WDR` to reset TIMER before the match occurs.
 
 **High byte [15:8] - Status (R / W1C):**
 

@@ -51,7 +51,7 @@ XMEM #0b0010    ; post-inc pop: ACC ← [RA1], RA1 += W_bytes
 
 Before calling a function, the caller must:
 1. **Push arguments** onto the stack (typically Right-to-Left or Left-to-Right depending on compiler ABI).
-2. **Prepare target address** in `RA0` via `SA`.
+2. **Prepare target address** in `RA0` via `SA0`.
 3. **Execute JAL** to transfer control.
 
 **Example:**
@@ -65,7 +65,7 @@ caller:
 
     ; Prepare target address
     LDi #add                ; ACC ← add address
-    SA                      ; RA0 ← add addr
+    SA0                      ; RA0 ← add addr
     JAL                     ; PC ← RA0; RA0 ← PC_next (link)
 
     ; Clean up stack (2 args = 2 pops)
@@ -83,13 +83,13 @@ add:
     ; Read args from stack via RA0 offset
     ; SP (RA1) + 0 = arg 1
     LDi #0
-    SA                      ; RA0 = 0
+    SA0                      ; RA0 = 0
     XMEM #0b0001            ; ACC ← [RA1 + RA0]
-    SS                      ; RS0 ← arg 1
+    SS0                     ; RS0 ← arg 1
 
     ; SP (RA1) + 2 = arg 2
     LDi #2
-    SA                      ; RA0 = 2
+    SA0                      ; RA0 = 2
     XMEM #0b0001            ; ACC ← [RA1 + RA0]
     
     ADD                     ; ACC ← ACC + RS0
@@ -102,18 +102,18 @@ On entry from `JAL`, **RA0 holds the return address** (link). The prologue must 
 ```assembly
 complex:
     ; === PROLOGUE (3 instructions) ===
-    SA                      ; ACC ← RA0 (return address)
+    SA0                      ; ACC ← RA0 (return address)
     XMEM #0b1110            ; Push return address
-    SA                      ; Restore ACC (optional)
+    SA0                      ; Restore ACC (optional)
 
     ; === BODY ===
     ; Allocate locals if needed: XMEM #0b1110 (push 0)
     ; ... function logic ...
 
     ; === EPILOGUE (4 instructions) ===
-    SA                      ; Save ACC (return value) if needed
+    SA0                      ; Save ACC (return value) if needed
     XMEM #0b0010            ; Pop return address into ACC
-    SA                      ; RA0 ← return address
+    SA0                      ; RA0 ← return address
     JMP                     ; PC ← RA0
 ```
 
