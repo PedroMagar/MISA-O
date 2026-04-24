@@ -50,10 +50,12 @@ Three implementation profiles are defined:
 | 0    | CPUID    | Implementation and capability identification | required  |
 | 1    | CORECFG  | Core configuration and architectural flags   | required  |
 | 2    | EVTCTRL  | Interrupt, event, and watchdog control       | baseline  |
-| 3    | INTADDR  | Interrupt base address (IA alias)            | interrupt |
+| 3    | EVTADDR  | Event base addresses (IA alias + MMU fault)  | interrupt |
 | 4    | TIMER    | Free-running 16-bit counter                  | time      |
 | 5    | TIMERCMP | Timer comparison value                       | time      |
-| 6–15 | RSV      | Reserved for extensions                      | -         |
+| 6    | PTBL01   | Page table entries for pages 0 and 1         | mmu       |
+| 7    | PTBL23   | Page table entries for pages 2 and 3         | mmu       |
+| 8–15 | RSV      | Reserved for extensions                      | -         |
 
 Note: **EVTCTRL** is present in the baseline profile even if the Interrupt Profile is not implemented. Interrupt-related fields read as zero when the profile is absent.
 
@@ -76,7 +78,7 @@ It provides implementation identification and capability discovery. Software typ
   * [11] MAD Profile
   * [10] Debug Profile
   * [9]  Interrupt Profile
-  * [8]  MMU Profile (reserved)
+  * [8]  MMU Profile
 
 * **[7:4] VENDOR** - Vendor identifier
   * `0x0`: Reference or unspecified
@@ -118,6 +120,7 @@ Consolidates interrupt enables, pending status, and watchdog policy.
 * [1] EXT_IE - External interrupt enable
 * [2] T_IE   - Timer interrupt enable
 * [3] SS_IE  - Single-step enable (Debug Profile; RAZ/WI if Debug Profile absent)
+* [4] MMU_IE - MMU fault interrupt enable (MMU Profile; RAZ/WI if MMU Profile absent)
 * [7] WDOG   - Watchdog mode. When set, a timer match (TIMER == TIMERCMP) causes a core reset instead of raising a timer interrupt. Software must periodically execute `WDR` to reset TIMER before the match occurs.
 
 **High byte [15:8] - Status (R / W1C):**
@@ -127,7 +130,9 @@ Consolidates interrupt enables, pending status, and watchdog policy.
 * [10] T_P    - Timer interrupt pending
 * [11] SW_P   - Software interrupt pending
 * [12] SS_P   - Single-step pending (Debug Profile; RAZ if Debug Profile absent)
-* [15:13] reserved.
+* [13] MMU_P  - MMU fault pending (MMU Profile; W1C; RAZ if MMU Profile absent)
+* [14] MMU_IF - Instruction fetch fault: 1 = fault on PC fetch, 0 = data access (MMU Profile; RO; cleared with MMU_P; RAZ if MMU Profile absent)
+* [15] reserved.
 
 Pending bits are cleared by writing `1` to the corresponding bit position.
 
@@ -140,14 +145,14 @@ Interrupt delivery sequence:
 
 ---
 
-### CSR3 – INTADDR (Interrupt Base Address)
+### CSR3 – EVTADDR (Event Base Addresses)
 
-Alias of the architectural **IA** register.
+Combines the architectural **IA** register with a read-only snapshot of the last MMU fault address.
 
-* **[7:0]**  Interrupt base page
-* **[15:8]** Reserved
+* **[7:0]**  IA (R/W) — Interrupt base page (alias of the IA architectural register)
+* **[15:8]** MFAH (R) — MMU Fault Address High byte: `addr[15:8]` of the address that triggered the most recent MMU fault. Updated by hardware on each MMU fault; writes are ignored. Reads as `0` when the MMU Profile is absent.
 
-CSRLD #3 reads IA; CSRST #3 writes IA using `ACC[7:0]`.
+`CSRLD #3` reads both fields. `CSRST #3` writes `ACC[7:0]` into IA; the high byte is unaffected.
 
 ---
 
@@ -177,7 +182,42 @@ Pending status is cleared explicitly by software.
 
 ---
 
-### CSR6–CSR15 – Reserved
+### CSR6 – PTBL01 (Page Table: Pages 0–1)
+
+**MMU Profile.** Holds the page table entries for pages 0 and 1. Readable and writable only in supervisor mode (`CFG.SV = 1`); user-mode reads return `0` and writes are ignored.
+
+| Bits   | Description                              |
+|--------|------------------------------------------|
+| [7:0]  | Page 0 entry (addresses 0x0000–0x3FFF)   |
+| [15:8] | Page 1 entry (addresses 0x4000–0x7FFF)   |
+
+Each byte encodes the page's protection attributes and physical mapping:
+
+| Bit   | Name  | Description                                                                        |
+|-------|-------|------------------------------------------------------------------------------------|
+| [7]   | SV    | Supervisor Only. 1 = user-mode access causes a fault.                              |
+| [6]   | XO    | Execute Only. 1 = data access forbidden.                                           |
+| [5]   | WE    | Write Enable. 1 = writes permitted. 0 = read-only.                                |
+| [4:0] | PPAGE | Physical Page Number. Byte address: `{ PPAGE[4:0], virt[13:1] }`; nibble select = `virt[0]`. Active for all privilege levels; supervisor skips protection flags only. |
+
+On reset: `0x0100` — page 0 entry = `0x00` (PPAGE=0), page 1 entry = `0x01` (PPAGE=1); all protection flags clear. Identity-mapped by default.
+
+---
+
+### CSR7 – PTBL23 (Page Table: Pages 2–3)
+
+**MMU Profile.** Holds the page table entries for pages 2 and 3. Same access rules and entry format as CSR6.
+
+| Bits   | Description                              |
+|--------|------------------------------------------|
+| [7:0]  | Page 2 entry (addresses 0x8000–0xBFFF)   |
+| [15:8] | Page 3 entry (addresses 0xC000–0xFFFF)   |
+
+On reset: `0x0302` — page 2 entry = `0x02` (PPAGE=2), page 3 entry = `0x03` (PPAGE=3); all protection flags clear. Identity-mapped by default.
+
+---
+
+### CSR8–CSR15 – Reserved
 
 Reserved for future profiles and implementation-defined extensions.
 
@@ -192,4 +232,4 @@ Unimplemented slots read as `0` and ignore writes.
 * Access mechanism: **CSRLD / CSRST (LK16 only)**
 * Required CSRs: **CPUID, CORECFG**
 * Baseline CSRs: **EVTCTRL**
-* Profile-driven CSRs: **INTADDR, TIMER, TIMERCMP**
+* Profile-driven CSRs: **EVTADDR, TIMER, TIMERCMP, PTBL01, PTBL23**

@@ -23,6 +23,7 @@ This approach keeps the implementation simple and compact while avoiding the str
 - [Interrupt](arch/profiles/interrupt.md)
 - [Debug](arch/profiles/debug.md)
 - [MAD](arch/profiles/mad.md)
+- [MMU](arch/profiles/mmu.md)
 
 ## Reference Implementation
 
@@ -96,12 +97,12 @@ The accumulators are 4-bit wide and can be linked into wider configurations (2x8
 - 1x8-bit IAR (Interrupt Address Return) register.
 - 4x4-bit ACC (Accumulator) register.
 - 2x16-bit RS (Register Source) register.
-- 2x16-bit RA (Address) register.
+- 2x16-bit RA (Address) register. Hold **nibble addresses**, consistent with PC.
   - RA0: Jump / Link register.
   - RA1: Memory base address.
 - 1x8-bit CFG (Configuration) register.
   - [7]: **RSV** - Reserved.
-  - [6]: **RSV** - Reserved.
+  - [6]: **SV** - Supervisor Mode (MMU Profile; RAZ/WI when absent). 0: User / 1: Supervisor.
   - [5]: **CI** - Carry-in, (0: disable / 1: enable). Reset: 0 (disable).
     - 0: Carry-in = 0 (ignore carry, default)
     - 1: Carry-in = C flag (use carry)
@@ -119,7 +120,7 @@ The accumulators are 4-bit wide and can be linked into wider configurations (2x8
 | Bit | Name     | Default | Description                                                                                           |
 |-----|----------|---------|-------------------------------------------------------------------------------------------------------|
 |  7  | RSV      |    0    | Reserved for future use or extensions.                                                                |
-|  6  | RSV      |    0    | Reserved for future use or extensions.                                                                |
+|  6  | SV*      |    0    | Supervisor Mode (MMU Profile). 0 = User. 1 = Supervisor. RAZ/WI when MMU Profile absent.             |
 |  5  | CI       |    0    | Carry-in enable. When 0, arithmetic ignores C as input. When 1, arithmetic uses C as carry/borrow-in. |
 |  4  | IE       |    0    | Interrupt enable                                                                                      |
 |  3  | IMM      |    0    | When set, selected ALU opcodes use an embedded immediate instead of RS0 as second operand.            |
@@ -183,7 +184,7 @@ MISA-O uses **nibble-based encoding** with variable-length instructions:
 **Key Points:**
 - Instructions are **nibble-aligned** (not byte-aligned).
 - Nibble order within a byte is fixed as low first
-- PC addresses instruction nibbles directly.
+- PC addresses instruction nibbles directly. All address registers (RA0, RA1) use the same nibble granularity — the 16-bit address space spans 64K nibbles (32K bytes).
 - Simple operations (ADD, SS0, etc) can pair in 1 byte.
 - Complex operations (CFG, LDi) use 2-3 bytes.
 - When `CFG.IMM` is enabled, relevant instructions (ADD, SUB, AND, OR, XOR, TST) increase by W-size to accommodate the immediate operand (`BTST` always uses a 4-bit immediate, since it is sufficient to address the 16 positions of the register).
@@ -245,20 +246,20 @@ MISA-O uses **nibble-based encoding** with variable-length instructions:
     - `addr` = `(IDX ? RA1 + RA0 : RA1)`
       - **Direct** (`IDX=0`): address is `RA1`. Auto-Modify (AM) targets `RA1`.
       - **Indexed** (`IDX=1`): address is `RA1 + RA0` (RA1 as fixed base, RA0 as 16-bit unsigned offset). Auto-Modify (AM) targets `RA0`.
-    - `stride` = `(W == 16 ? 2 : 1) ; bytes (UL & LK8: 1B; LK16: 2B)`
-    - **LD**: 
-      - **LK16**: `ACC ← { [addr+1], [addr] } ; little-endian`
-      - **LK8**: `ACC[7:0] ← [addr]`
-      - **UL**: `ACC[3:0] ← [addr][3:0]`
+    - Auto-modify stride (element size): `UL: 1N | LK8: 2N | LK16: 4N`
+    - **LD** (`[n]` = nibble at nibble-address `n`; for UL `[n]` denotes the byte whose address is `n>>1`, with `n[0]` selecting the nibble):
+      - **LK16**: `ACC[15:0] ← { [addr+3], [addr+2], [addr+1], [addr] }` ; little-endian nibbles
+      - **LK8**: `ACC[7:0] ← { [addr+1], [addr] }`
+      - **UL**: `ACC[3:0] ← [addr][3:0]` if `addr[0]=0` (low nibble);  `ACC[3:0] ← [addr][7:4]` if `addr[0]=1` (high nibble)
     - **SW**:
-      - **LK16**: `[addr] ← ACC[7:0]; [addr+1] ← ACC[15:8]`
-      - **LK8**: `[addr] ← ACC[7:0]`
-      - **UL**: `tmp ← [addr]; tmp[3:0] ← ACC[3:0]; [addr] ← tmp`
+      - **LK16**: `[addr] ← ACC[3:0]; [addr+1] ← ACC[7:4]; [addr+2] ← ACC[11:8]; [addr+3] ← ACC[15:12]`
+      - **LK8**: `[addr] ← ACC[3:0]; [addr+1] ← ACC[7:4]`
+      - **UL**: `[addr][3:0] ← ACC[3:0]` if `addr[0]=0`;  `[addr][7:4] ← ACC[3:0]` if `addr[0]=1`
     - If AM=1: Enables Auto-Modify mode. The modified register is `RA1` when `IDX=0`, or `RA0` when `IDX=1`. The update timing corresponds to standard stack operations:
       - DIR=0 (Increment): Performs Post-Increment (Access [addr], then reg ← reg + stride).
       - DIR=1 (Decrement): Performs Pre-Decrement (reg ← reg - stride, then Access [addr]).
     - Flags: **unchanged**.
-- **MCPY**: Copies **|RS1| bytes** from `[RA1]` to `[RA0]`, counter is **signed `RS1`** and always progresses toward zero; ***flags unchanged***.
+- **MCPY**: Copies **|RS1| bytes** from `[RA1]` to `[RA0]` (stride = 2 nibbles per byte); counter is **signed `RS1`** and always progresses toward zero; ***flags unchanged***.
 - **WDR**: Resets TIMER to `0x0000`, restarting the watchdog countdown. Does not modify any register, flag, or CSR other than TIMER. If `EVTCTRL.WDOG` is clear, WDR has no observable effect.
 - **CSRLD #imm**: Loads CSR into ACC (more details on CSR section).
 - **CSRST #imm**: Write ACC into CSR (more details on CSR section).
@@ -479,7 +480,7 @@ if (RS1 > 0) {
 ### Data Width and Addressing
 
 * `MCPY` always operates on **bytes**, independent of the current link mode (`W`).
-* Address registers (`RA0`, `RA1`) are updated by **±1 byte** per iteration.
+* Address registers (`RA0`, `RA1`) are updated by **±2 nibbles** (1 byte) per iteration — the `++`/`--` in the pseudocode above represent a 2-nibble address step.
 * The signedness of `RS1` is evaluated directly from its most significant bit and is **independent of `CFG.SIGN`**.
 
 ### Flags and Side Effects
@@ -525,10 +526,12 @@ Two implementation profiles are envisaged:
 | 0    | CPUID    | CPUID                                              | required  |
 | 1    | CORECFG  | Core configuration and flags (CFG + flags)         | required  |
 | 2    | EVTCTRL  | Unified control: Status, Masks, and Watchdog.      | baseline  |
-| 3    | INTADDR  | Interrupt base page (IA alias)                     | interrupt |
+| 3    | EVTADDR  | Event base addresses (IA alias + MMU fault high byte) | interrupt |
 | 4    | TIMER    | Cycle/instruction counter (16-bit free-running).   | time      |
 | 5    | TIMERCMP | Comparison value for the Timer.                    | time      |
-| 6–15 | RSV      | Reserved for extensions                            | —         |
+| 6    | PTBL01   | Page table entries for pages 0 and 1               | mmu       |
+| 7    | PTBL23   | Page table entries for pages 2 and 3               | mmu       |
+| 8–15 | RSV      | Reserved for extensions                            | —         |
 
 Note: EVTCTRL is present in baseline even if the Interrupt Profile is not implemented; fields related to interrupts read as zero when the profile is absent.
 
@@ -542,6 +545,7 @@ The architecture defines a set of optional profiles that extend the baseline cor
 - **[Interrupt](arch/profiles/interrupt.md)** — Interrupt handling support.
 - **[Debug](arch/profiles/debug.md)** — Debug and introspection facilities.
 - **[MAD](arch/profiles/mad.md)** — Multiply-Add and related arithmetic extensions.
+- **[MMU](arch/profiles/mmu.md)** — Supervisor/User privilege separation and page-level memory protection.
 
 ---
 
